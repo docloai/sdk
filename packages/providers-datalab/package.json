@@ -1,0 +1,39 @@
+{
+  "name": "@doclo/providers-datalab",
+  "version": "0.1.5",
+  "description": "Datalab OCR provider integration for document text extraction",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docloai/sdk.git",
+    "directory": "packages/providers-datalab"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@doclo/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0"
+  }
+}

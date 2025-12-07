@@ -1,0 +1,47 @@
+{
+  "name": "doclo-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "type-check": "turbo run type-check",
+    "benchmark": "tsx packages/benchmark/src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage",
+    "test:unit": "vitest run tests/unit",
+    "test:integration": "vitest run tests/integration",
+    "test:e2e": "vitest run tests/e2e",
+    "test:providers": "vitest run packages/providers-*/tests/",
+    "test:providers:llm": "vitest run packages/providers-llm/tests/",
+    "test:providers:datalab": "vitest run packages/providers-datalab/tests/",
+    "test:providers:reducto": "vitest run packages/providers-reducto/tests/",
+    "test:providers:unsiloed": "vitest run packages/providers-unsiloed/tests/",
+    "publish:packages": "pnpm -r publish --access restricted",
+    "publish:dry-run": "pnpm -r publish --dry-run"
+  },
+  "devDependencies": {
+    "@alcyone-labs/zod-to-json-schema": "^4.0.10",
+    "@edge-runtime/vm": "^5.0.0",
+    "@vitest/coverage-v8": "^4.0.10",
+    "@vitest/ui": "^4.0.10",
+    "dotenv": "^17.2.3",
+    "msw": "^2.12.2",
+    "tsup": "^8.3.5",
+    "tsx": "^4.7.0",
+    "turbo": "^2.3.3",
+    "typescript": "^5.6.3",
+    "vitest": "^4.0.10",
+    "zod": "^4.1.12",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "packageManager": "pnpm@9.14.4",
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=9.0.0"
+  }
+}

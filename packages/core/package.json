@@ -1,0 +1,70 @@
+{
+  "name": "@doclo/core",
+  "version": "0.1.5",
+  "description": "Core types, utilities, and security features for the Doclo SDK",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docloai/sdk.git",
+    "directory": "packages/core"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./validation": {
+      "import": "./dist/validation.js",
+      "types": "./dist/validation.d.ts"
+    },
+    "./security": {
+      "import": "./dist/security/index.js",
+      "types": "./dist/security/index.d.ts"
+    },
+    "./observability": {
+      "import": "./dist/observability/index.js",
+      "types": "./dist/observability/index.d.ts"
+    },
+    "./runtime/crypto": {
+      "import": "./dist/runtime/crypto.js",
+      "types": "./dist/runtime/crypto.d.ts"
+    },
+    "./runtime/base64": {
+      "import": "./dist/runtime/base64.js",
+      "types": "./dist/runtime/base64.d.ts"
+    },
+    "./runtime/env": {
+      "import": "./dist/runtime/env.js",
+      "types": "./dist/runtime/env.d.ts"
+    },
+    "./internal/validation-utils": {
+      "import": "./dist/internal/validation-utils.js",
+      "types": "./dist/internal/validation-utils.d.ts"
+    },
+    "./pdf-utils": {
+      "import": "./dist/pdf-utils.js",
+      "types": "./dist/pdf-utils.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "file-type": "^19.6.0",
+    "pdf-lib": "^1.17.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0"
+  }
+}

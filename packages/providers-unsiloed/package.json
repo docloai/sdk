@@ -1,0 +1,42 @@
+{
+  "name": "@doclo/providers-unsiloed",
+  "version": "0.1.2",
+  "description": "Unsiloed AI provider integration for document parsing, extraction, classification, and splitting",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docloai/sdk.git",
+    "directory": "packages/providers-unsiloed"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@doclo/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@doclo/providers-llm": "workspace:*",
+    "@doclo/providers-reducto": "workspace:*",
+    "@types/node": "^20",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.0"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@doclo/providers-google",
+  "version": "0.1.0",
+  "description": "Google Gemini provider integration for LLM and VLM operations",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docloai/sdk.git",
+    "directory": "packages/providers-google"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@doclo/core": "workspace:*",
+    "@doclo/providers-llm": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.0"
+  }
+}

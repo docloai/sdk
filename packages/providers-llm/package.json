@@ -1,0 +1,63 @@
+{
+  "name": "@doclo/providers-llm",
+  "version": "0.1.5",
+  "description": "Core LLM provider utilities, types, and schema translation for Doclo SDK",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docloai/sdk.git",
+    "directory": "packages/providers-llm"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@alcyone-labs/zod-to-json-schema": "^4.0.10",
+    "@doclo/core": "workspace:*",
+    "ajv": "^8.17.1"
+  },
+  "peerDependencies": {
+    "@doclo/providers-openai": "^0.1.0",
+    "@doclo/providers-anthropic": "^0.1.0",
+    "@doclo/providers-google": "^0.1.0",
+    "@doclo/providers-xai": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@doclo/providers-openai": {
+      "optional": true
+    },
+    "@doclo/providers-anthropic": {
+      "optional": true
+    },
+    "@doclo/providers-google": {
+      "optional": true
+    },
+    "@doclo/providers-xai": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "dotenv": "^16.4.7",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.0.0"
+  }
+}
