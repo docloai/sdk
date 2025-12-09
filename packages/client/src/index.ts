@@ -22,11 +22,49 @@
  * console.log(result.output);
  * ```
  *
+ * @example Hybrid execution (local execution with cloud observability)
+ * ```typescript
+ * import { DocloHybridClient } from '@doclo/client';
+ * import { createGeminiProvider } from '@doclo/providers-google';
+ *
+ * const client = new DocloHybridClient({
+ *   apiKey: process.env.DOCLO_API_KEY!,
+ *   providers: {
+ *     vlm: createGeminiProvider({ apiKey: process.env.GOOGLE_API_KEY! })
+ *   }
+ * });
+ *
+ * // Pull flow from cloud, execute locally
+ * const result = await client.runHybrid('flow_abc123', { base64: '...' });
+ * ```
+ *
  * @packageDocumentation
  */
 
-// Main client
+// Main clients
 export { DocloClient } from './client.js';
+export { DocloHybridClient } from './hybrid.js';
+export type {
+  HybridClientConfig,
+  HybridRunOptions,
+  LocalRunOptions,
+  FlowProvider,
+  ProviderRegistry,
+} from './hybrid.js';
+
+// Cloud observability transport
+export { createCloudObservability } from './observability/cloud-transport.js';
+export type {
+  CloudObservabilityOptions,
+  CloudObservability,
+  CloudObservabilityTransport,
+} from './observability/cloud-transport.js';
+
+// Remote registries
+export { RemotePromptRegistry } from './registry/remote-prompt-registry.js';
+export type { RemotePromptRegistryOptions } from './registry/remote-prompt-registry.js';
+export { RemoteSchemaRegistry } from './registry/remote-schema-registry.js';
+export type { RemoteSchemaRegistryOptions } from './registry/remote-schema-registry.js';
 
 // Types
 export type {
@@ -48,6 +86,41 @@ export type {
   WebhookEvent,
   // Rate limit types
   RateLimitInfo,
+  // Flow definition types
+  FlowDefinitionResponse,
+  // Prompt types
+  PromptAssetResponse,
+  PromptVersionsResponse,
+  PromptMessage,
+  PromptSections,
+  PromptVariable,
+  // Schema types
+  SchemaAssetResponse,
+  SchemaVersionsResponse,
+  // Assets bundle types
+  FlowAssetsResponse,
+  // Observability types
+  ObservabilityIngestRequest,
+  ObservabilityIngestResponse,
+  ObservabilityEvent,
+  TraceContextData,
+  FlowStartEventData,
+  FlowEndEventData,
+  FlowErrorEventData,
+  FlowStatsData,
+  StepStartEventData,
+  StepEndEventData,
+  StepErrorEventData,
+  TokenUsageData,
+  ConsensusStartEventData,
+  ConsensusRunEventData,
+  ConsensusCompleteEventData,
+  BatchStartEventData,
+  BatchItemEndEventData,
+  BatchEndEventData,
+  ProviderRequestEventData,
+  ProviderResponseEventData,
+  ProviderRetryEventData,
 } from './types.js';
 
 // Errors

@@ -7,6 +7,11 @@ import { InvalidApiKeyError, ValidationError } from './errors.js';
 import { docloFetch, DEFAULT_BASE_URL, DEFAULT_TIMEOUT } from './utils/fetch.js';
 import { FlowsResource } from './resources/flows.js';
 import { RunsResource } from './resources/runs.js';
+import { DefinitionsResource } from './resources/definitions.js';
+import { PromptsResource } from './resources/prompts.js';
+import { SchemasResource } from './resources/schemas.js';
+import { AssetsResource } from './resources/assets.js';
+import { ObservabilityResource } from './resources/observability.js';
 
 /**
  * Private IP ranges that should be blocked for production keys (SSRF prevention)
@@ -56,6 +61,21 @@ export class DocloClient {
   /** Execution run management */
   readonly runs: RunsResource;
 
+  /** Flow definitions for local execution */
+  readonly definitions: DefinitionsResource;
+
+  /** Prompt assets */
+  readonly prompts: PromptsResource;
+
+  /** Schema assets */
+  readonly schemas: SchemasResource;
+
+  /** Flow assets bundles */
+  readonly assets: AssetsResource;
+
+  /** Observability event ingestion */
+  readonly observability: ObservabilityResource;
+
   private readonly apiKey: string;
   private readonly baseUrl: string;
   private readonly convexUrl: string;
@@ -89,6 +109,11 @@ export class DocloClient {
     // Initialize resources
     this.flows = new FlowsResource(this);
     this.runs = new RunsResource(this);
+    this.definitions = new DefinitionsResource(this);
+    this.prompts = new PromptsResource(this);
+    this.schemas = new SchemasResource(this);
+    this.assets = new AssetsResource(this);
+    this.observability = new ObservabilityResource(this);
   }
 
   /**

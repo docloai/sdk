@@ -41,6 +41,7 @@ export type {
   SplitNodeConfig,
   CategorizeNodeConfig,
   ExtractNodeConfig,
+  ExtractInputMode,
   ChunkMetadata,
   ChunkOutput,
   ChunkNodeConfig,

@@ -24,15 +24,37 @@
     "build": "tsup",
     "build:watch": "tsup --watch",
     "clean": "rm -rf dist",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "peerDependencies": {
-    "@doclo/core": "^0.1.5"
+    "@doclo/core": "^0.1.5",
+    "@doclo/flows": "^0.1.0",
+    "@doclo/prompts": "^0.1.0",
+    "@doclo/schemas": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@doclo/flows": {
+      "optional": true
+    },
+    "@doclo/prompts": {
+      "optional": true
+    },
+    "@doclo/schemas": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@doclo/core": "workspace:*",
+    "@doclo/flows": "workspace:*",
+    "@doclo/prompts": "workspace:*",
+    "@doclo/providers-llm": "workspace:*",
+    "@doclo/schemas": "workspace:*",
     "tsup": "^8.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0",
+    "vitest": "^2.0.0"
   },
   "engines": {
     "node": ">=18"

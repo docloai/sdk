@@ -17,7 +17,7 @@ import {
 /**
  * Default base URL for the Doclo API
  */
-export const DEFAULT_BASE_URL = 'https://api.doclo.cloud';
+export const DEFAULT_BASE_URL = 'https://app.doclo.ai';
 
 /**
  * Default request timeout (5 minutes)
@@ -178,7 +178,7 @@ export async function docloFetch<T>(
 
   // Build full URL
   const queryString = buildQueryString(query as Record<string, string | number | undefined>);
-  const url = `${baseUrl}/v1${path}${queryString}`;
+  const url = `${baseUrl}/api/v1${path}${queryString}`;
 
   // Setup abort controller for timeout
   const controller = new AbortController();

@@ -10,6 +10,7 @@ import {
   type SplitNodeConfig,
   type CategorizeNodeConfig,
   type ExtractNodeConfig,
+  type ExtractInputMode,
   type ChunkNodeConfig,
   type ChunkOutput,
   type ChunkMetadata,
@@ -1075,7 +1076,7 @@ function calculateCharacterOffsets(ir: DocumentIR): DocumentIR {
 
     for (let lineIdx = 0; lineIdx < page.lines.length; lineIdx++) {
       const line = page.lines[lineIdx];
-      const lineLength = line.text.length;
+      const lineLength = (line.text ?? '').length;
 
       // Add character offsets
       line.startChar = globalCharOffset;
@@ -1169,18 +1170,18 @@ export function parse(config: ParseNodeConfig) {
           } else {
             const lineSchema = config.citations?.enabled
               ? {
-                  type: 'object' as const,
-                  properties: {
-                    text: { type: 'string' as const },
-                    lineId: { type: 'string' as const, description: 'Line identifier' }
-                  },
-                  required: ['text' as const, 'lineId' as const]
-                }
+                type: 'object' as const,
+                properties: {
+                  text: { type: 'string' as const },
+                  lineId: { type: 'string' as const, description: 'Line identifier' }
+                },
+                required: ['text' as const, 'lineId' as const]
+              }
               : {
-                  type: 'object' as const,
-                  properties: { text: { type: 'string' as const } },
-                  required: ['text' as const]
-                };
+                type: 'object' as const,
+                properties: { text: { type: 'string' as const } },
+                required: ['text' as const]
+              };
 
             schema = {
               type: 'object' as const,
@@ -1227,8 +1228,8 @@ export function parse(config: ParseNodeConfig) {
             additionalInstructions: config.additionalInstructions
           });
           promptText = rendered.messages.map((msg: any) => {
-            const content = msg.content[0];
-            return content.text || content;
+            const content = msg.content?.[0];
+            return content?.text ?? content ?? '';
           }).join('\n\n');
 
           // Auto-inject format instruction if not present in rendered prompt
@@ -1281,23 +1282,23 @@ export function parse(config: ParseNodeConfig) {
             // Default 'text' format: line-level with optional citations
             const lineSchema = config.citations?.enabled
               ? {
-                  type: 'object' as const,
-                  properties: {
-                    text: { type: 'string' as const },
-                    lineId: {
-                      type: 'string' as const,
-                      description: 'Line identifier in format p{page}_l{line}, e.g., p1_l0, p1_l1'
-                    }
-                  },
-                  required: ['text' as const, 'lineId' as const]
-                }
+                type: 'object' as const,
+                properties: {
+                  text: { type: 'string' as const },
+                  lineId: {
+                    type: 'string' as const,
+                    description: 'Line identifier in format p{page}_l{line}, e.g., p1_l0, p1_l1'
+                  }
+                },
+                required: ['text' as const, 'lineId' as const]
+              }
               : {
-                  type: 'object' as const,
-                  properties: {
-                    text: { type: 'string' as const }
-                  },
-                  required: ['text' as const]
-                };
+                type: 'object' as const,
+                properties: {
+                  text: { type: 'string' as const }
+                },
+                required: ['text' as const]
+              };
 
             schema = {
               type: 'object' as const,
@@ -1748,10 +1749,18 @@ export function categorize(config: CategorizeNodeConfig) {
 
   const categorizeNode = node<DocumentIR | FlowInput, { input: DocumentIR | FlowInput; category: string }>("categorize", async (input: DocumentIR | FlowInput, ctx: NodeCtx) => {
     const categorizeOnce = async () => {
+      // Normalize categories - handle both string[] and object[] with name property
+      // Cloud flow definitions may send categories as objects: { name: string, description?: string }
+      const normalizedCategories: string[] = (config.categories as any[]).map((cat: any) => {
+        if (typeof cat === 'string') return cat;
+        if (cat && typeof cat === 'object' && 'name' in cat) return cat.name;
+        return String(cat);
+      });
+
       const schema = {
         type: 'object' as const,
         properties: {
-          category: { type: 'string' as const, enum: config.categories }
+          category: { type: 'string' as const, enum: normalizedCategories }
         },
         required: ['category' as const]
       };
@@ -1770,7 +1779,20 @@ export function categorize(config: CategorizeNodeConfig) {
       if (isDocumentIR) {
         // DocumentIR - use text prompt
         const ir = input as DocumentIR;
-        const text = ir.pages.flatMap((p: IRPage) => p.lines.map((l: IRLine) => l.text)).join('\n');
+        console.log('[DEBUG] categorize: isDocumentIR=true, processing pages');
+        const text = ir.pages.flatMap((p: IRPage) => {
+          if (!p.lines) {
+            console.log('[DEBUG] categorize: page has no lines', p);
+            return [];
+          }
+          return p.lines.map((l: IRLine) => {
+            if (!l) {
+              console.log('[DEBUG] categorize: line is undefined');
+              return '';
+            }
+            return l.text ?? '';
+          });
+        }).join('\n');
 
         // Build prompt
         let prompt: string;
@@ -1803,7 +1825,7 @@ export function categorize(config: CategorizeNodeConfig) {
           // Render prompt with variables
           // Auto-injected variables first, then user variables can override
           const variables = {
-            categories: config.categories,
+            categories: normalizedCategories,
             documentText: text,
             ...config.promptVariables
           };
@@ -1812,14 +1834,23 @@ export function categorize(config: CategorizeNodeConfig) {
             variables,
             additionalInstructions: config.additionalInstructions
           });
+          console.log('[DEBUG] categorize: rendered prompt messages', JSON.stringify(rendered.messages, null, 2));
           prompt = rendered.messages.map((msg: any) => {
-            const content = msg.content[0];
-            return content.text || content;
+            if (!msg) {
+              console.log('[DEBUG] categorize: msg is undefined');
+              return '';
+            }
+            const content = msg.content?.[0];
+            if (!content) {
+              console.log('[DEBUG] categorize: content is undefined for msg', msg);
+              return '';
+            }
+            return content?.text ?? content ?? '';
           }).join('\n\n');
 
         } else {
           // Fall back to default prompt
-          prompt = `Categorize this document as one of: ${config.categories.join(', ')}`;
+          prompt = `Categorize this document as one of: ${normalizedCategories.join(', ')}`;
           if (config.additionalPrompt) {
             prompt += `\n\nAdditional guidance:\n${config.additionalPrompt}`;
           }
@@ -1879,7 +1910,7 @@ export function categorize(config: CategorizeNodeConfig) {
           // Render prompt with variables
           // Auto-injected variables first, then user variables can override
           const variables = {
-            categories: config.categories,
+            categories: normalizedCategories,
             ...config.promptVariables
           };
 
@@ -1887,14 +1918,23 @@ export function categorize(config: CategorizeNodeConfig) {
             variables,
             additionalInstructions: config.additionalInstructions
           });
+          console.log('[DEBUG] categorize (FlowInput): rendered prompt messages', JSON.stringify(rendered.messages, null, 2));
           promptText = rendered.messages.map((msg: any) => {
-            const content = msg.content[0];
-            return content.text || content;
+            if (!msg) {
+              console.log('[DEBUG] categorize (FlowInput): msg is undefined');
+              return '';
+            }
+            const content = msg.content?.[0];
+            if (!content) {
+              console.log('[DEBUG] categorize (FlowInput): content is undefined for msg', msg);
+              return '';
+            }
+            return content?.text ?? content ?? '';
           }).join('\n\n');
 
         } else {
           // Fall back to default prompt
-          promptText = `Categorize this document as one of: ${config.categories.join(', ')}`;
+          promptText = `Categorize this document as one of: ${normalizedCategories.join(', ')}`;
           if (config.additionalPrompt) {
             promptText += `\n\nAdditional guidance:\n${config.additionalPrompt}`;
           }
@@ -1903,15 +1943,24 @@ export function categorize(config: CategorizeNodeConfig) {
           }
         }
 
-        result = await config.provider.completeJson({
-          prompt: {
-            text: promptText,
-            images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
-            pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
-          },
-          schema,
-          reasoning: config.reasoning
-        });
+        console.log('[DEBUG] categorize (FlowInput): calling provider.completeJson with prompt length:', promptText?.length);
+        console.log('[DEBUG] categorize (FlowInput): schema:', JSON.stringify(schema));
+        try {
+          result = await config.provider.completeJson({
+            prompt: {
+              text: promptText,
+              images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
+              pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
+            },
+            schema,
+            reasoning: config.reasoning
+          });
+          console.log('[DEBUG] categorize (FlowInput): provider returned result:', JSON.stringify(result, null, 2).substring(0, 500));
+        } catch (providerErr: any) {
+          console.log('[DEBUG] categorize (FlowInput): provider.completeJson threw error:', providerErr?.message);
+          console.log('[DEBUG] categorize (FlowInput): error stack:', providerErr?.stack);
+          throw providerErr;
+        }
       }
 
       const { provider, model } = parseProviderName(config.provider.name);
@@ -2081,7 +2130,7 @@ function mapLineCitations(
           const citation: any = {
             pageNumber: pageNum,
             lineIndex: lineIdx,
-            text: config.includeTextSnippets !== false ? line.text : '',
+            text: config.includeTextSnippets !== false ? (line.text ?? '') : '',
             sourceType,
             startChar: line.startChar,
             endChar: line.endChar
@@ -2142,6 +2191,149 @@ function mapLineCitations(
   return fieldCitations;
 }
 
+/**
+ * Determine the effective input mode when 'auto' is specified.
+ * Logic:
+ * 1. If only DocumentIR available -> 'ir'
+ * 2. If only FlowInput available -> 'source' (requires VLM)
+ * 3. If both available:
+ *    - If provider is VLM and preferVisual !== false -> 'ir+source'
+ *    - Otherwise -> 'ir'
+ */
+function resolveAutoInputMode(
+  input: any,
+  config: ExtractNodeConfig,
+  ctx: NodeCtx
+): 'ir' | 'ir+source' | 'source' {
+  // Detect input types
+  const isChunkOutput = 'chunks' in input && Array.isArray((input as any).chunks);
+
+  const hasDocumentIR = !isChunkOutput &&
+    'pages' in input &&
+    Array.isArray((input as any).pages) &&
+    (input as any).pages.length > 0 &&
+    typeof (input as any).pages[0] === 'object' &&
+    'lines' in (input as any).pages[0];
+
+  // ChunkOutput also has sourceDocument which can serve as IR
+  const hasIRFromChunk = isChunkOutput && (input as any).sourceDocument;
+
+  const hasIR = hasDocumentIR || hasIRFromChunk;
+
+  const isInputFlowInput = !hasDocumentIR && !isChunkOutput &&
+    (input.base64 || input.url);
+
+  // Check for source availability in artifacts
+  const hasSourceInArtifacts = !!(
+    ctx.artifacts.__flowInput ||
+    ctx.artifacts.__originalFlowInput
+  );
+
+  const hasSource = isInputFlowInput || hasSourceInArtifacts;
+
+  const providerIsVLM = isVLMProvider(config.provider);
+  const preferVisual = config.preferVisual !== false; // default true
+
+  // Decision tree
+  if (hasIR && hasSource && providerIsVLM && preferVisual) {
+    return 'ir+source';
+  }
+
+  if (hasIR) {
+    return 'ir';
+  }
+
+  if (hasSource) {
+    if (!providerIsVLM) {
+      throw new Error(
+        'Auto input mode detected FlowInput but provider is not VLM. ' +
+        'Use a VLM provider for direct document extraction, or add a parse() step first.'
+      );
+    }
+    return 'source';
+  }
+
+  throw new Error(
+    'Auto input mode could not detect valid input. ' +
+    'Expected DocumentIR, ChunkOutput, or FlowInput (image/PDF).'
+  );
+}
+
+/**
+ * Helper to resolve extract node inputs based on inputMode configuration.
+ * Returns the DocumentIR and/or source FlowInput based on the mode.
+ * For 'auto' mode, resolves to the appropriate concrete mode.
+ */
+function resolveExtractInputs(
+  input: any,
+  config: ExtractNodeConfig,
+  ctx: NodeCtx
+): { ir: DocumentIR | null; source: FlowInput | null; isChunkOutput: boolean; effectiveMode: 'ir' | 'ir+source' | 'source' } {
+  // Resolve 'auto' mode first (default is now 'auto')
+  let effectiveMode: 'ir' | 'ir+source' | 'source';
+  const configuredMode = config.inputMode ?? 'auto';
+
+  if (configuredMode === 'auto') {
+    effectiveMode = resolveAutoInputMode(input, config, ctx);
+  } else {
+    effectiveMode = configuredMode;
+  }
+
+  // Check if input is ChunkOutput
+  const isChunkOutput = 'chunks' in input && Array.isArray((input as any).chunks);
+
+  // Detect input types
+  const isDocumentIR = !isChunkOutput &&
+    'pages' in input &&
+    Array.isArray((input as any).pages) &&
+    (input as any).pages.length > 0 &&
+    typeof (input as any).pages[0] === 'object' &&
+    'lines' in (input as any).pages[0];
+
+  const isFlowInput = !isDocumentIR && !isChunkOutput && (input.base64 || input.url);
+
+  let ir: DocumentIR | null = null;
+  let source: FlowInput | null = null;
+
+  // Resolve IR
+  if (effectiveMode === 'ir' || effectiveMode === 'ir+source') {
+    if (isDocumentIR) {
+      ir = input as DocumentIR;
+    } else if (isChunkOutput && (input as any).sourceDocument) {
+      // ChunkOutput has sourceDocument for IR
+      ir = (input as any).sourceDocument;
+    } else if (effectiveMode === 'ir' && !isChunkOutput) {
+      throw new Error(
+        'Extract inputMode="ir" requires DocumentIR input. ' +
+        'Use inputMode="source" for direct VLM extraction from FlowInput.'
+      );
+    }
+  }
+
+  // Resolve source document (handles forEach/split contexts via artifacts)
+  if (effectiveMode === 'source' || effectiveMode === 'ir+source') {
+    if (config.useOriginalSource && ctx.artifacts.__originalFlowInput) {
+      // Use original unsplit document (before split/forEach)
+      source = ctx.artifacts.__originalFlowInput as FlowInput;
+    } else if (ctx.artifacts.__flowInput) {
+      // Use current flow's input (segment source in forEach context)
+      source = ctx.artifacts.__flowInput as FlowInput;
+    } else if (isFlowInput) {
+      // Input is already FlowInput (direct VLM path)
+      source = input as FlowInput;
+    }
+
+    if (!source) {
+      throw new Error(
+        `Extract inputMode="${effectiveMode}" requires source document but none found. ` +
+        'Ensure flow input is a document (base64/url) or use inputMode="ir".'
+      );
+    }
+  }
+
+  return { ir, source, isChunkOutput, effectiveMode };
+}
+
 /** Extract node - LLM/VLM extracts structured data with optional citation tracking */
 export function extract<T = any>(config: ExtractNodeConfig<T>) {
   validateProviderCompatibility('extract', config.provider, {
@@ -2149,6 +2341,34 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
     acceptsOCR: false,
     acceptsLLM: false
   });
+
+  // For 'auto' mode, defer provider validation to runtime (resolveAutoInputMode handles it)
+  // Only validate for explicit modes
+  const configuredMode = config.inputMode ?? 'auto';
+
+  if (configuredMode !== 'auto') {
+    // Warn if VLM provider explicitly used with inputMode='ir' (text-only, missing visual context)
+    if (isVLMProvider(config.provider) && configuredMode === 'ir') {
+      console.warn(
+        '[doclo] VLMProvider used with explicit inputMode="ir" (text-only). ' +
+        'Consider inputMode="ir+source" or "auto" to leverage visual capabilities.'
+      );
+    }
+
+    // Validate provider for explicit ir+source mode
+    if (configuredMode === 'ir+source' && !isVLMProvider(config.provider)) {
+      throw new Error(
+        'inputMode="ir+source" requires VLMProvider for multimodal extraction.'
+      );
+    }
+
+    // Validate provider for explicit source mode
+    if (configuredMode === 'source' && !isVLMProvider(config.provider)) {
+      throw new Error(
+        'inputMode="source" requires VLMProvider for direct document extraction.'
+      );
+    }
+  }
 
   // Determine return type based on citation config
   type ReturnType = typeof config.citations extends { enabled: true }
@@ -2159,41 +2379,116 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
     // === PREP PHASE (runs once, before consensus) ===
     const prepStartTime = Date.now();
 
-    // Check if input is ChunkOutput
-    const isChunkOutput = 'chunks' in input && Array.isArray((input as any).chunks);
+    // Resolve inputs based on inputMode (handles 'auto' mode internally)
+    const { ir, source, isChunkOutput, effectiveMode } = resolveExtractInputs(input, config, ctx);
 
-    // Check if input is DocumentIR or FlowInput
-    const isDocumentIR = 'pages' in input &&
-      Array.isArray((input as any).pages) &&
-      (input as any).pages.length > 0 &&
-      typeof (input as any).pages[0] === 'object' &&
-      'lines' in (input as any).pages[0];
+    // For backward compatibility, also detect types directly for the existing paths
+    const isDocumentIR = ir !== null;
 
     // Determine source type - prioritize sourceMetadata from ChunkOutput
     const sourceType: CitationSourceType =
       (isChunkOutput && (input as any).sourceMetadata?.providerType) ||
-      (isDocumentIR && (input as any).extras?.providerType) ||
-      (isDocumentIR ? 'ocr' : 'vlm');
+      (ir?.extras?.providerType as CitationSourceType) ||
+      (ir ? 'ocr' : 'vlm');
 
-    // For ChunkOutput, use sourceDocument for citation mapping
-    let sourceIR: DocumentIR | null = null;
-    if (isChunkOutput && (input as any).sourceDocument) {
-      sourceIR = (input as any).sourceDocument;
-    }
+    // Use resolved IR for citation mapping
+    let sourceIR: DocumentIR | null = ir;
 
     // Prepared config for provider call
     let preparedPrompt: string | { text: string; images?: any[]; pdfs?: any[] };
     let extractionSchema: any;
 
-    if (isDocumentIR) {
-      // DocumentIR path (OCR→LLM)
-      const ir = input as DocumentIR;
+    if (effectiveMode === 'ir+source' && ir && source) {
+      // === HYBRID PATH: IR text + source document for visual context ===
+      sourceIR = ir;
+
+      // Collect structured formats (markdown/html) and plain text from IR
+      const markdown = ir.pages.map((p: IRPage) => p.markdown).filter(Boolean).join('\n\n---PAGE BREAK---\n\n');
+      const html = ir.pages.map((p: IRPage) => p.html).filter(Boolean).join('\n\n---PAGE BREAK---\n\n');
+      const plainText = ir.pages.flatMap((p: IRPage) => p.lines.map((l: IRLine) => l.text ?? '')).join('\n');
+
+      let documentText = '';
+      let structuredFormat: 'markdown' | 'html' | null = null;
+
+      if (markdown) {
+        structuredFormat = 'markdown';
+        documentText = `=== PARSED TEXT (MARKDOWN) ===\n${markdown}`;
+      } else if (html) {
+        structuredFormat = 'html';
+        documentText = `=== PARSED TEXT (HTML) ===\n${html}`;
+      } else {
+        documentText = `=== PARSED TEXT ===\n${plainText}`;
+      }
+
+      // Resolve schema (handle ref, enhanced, or plain)
+      const resolvedSchema = resolveSchema(config.schema);
+      const isEnhanced = resolvedSchema && typeof resolvedSchema === 'object' && 'schema' in resolvedSchema;
+      const actualSchema = isEnhanced ? (resolvedSchema as any).schema : resolvedSchema;
+      const enhanced = isEnhanced ? (resolvedSchema as any) : null;
+
+      // Build schema with citation tracking if enabled
+      extractionSchema = config.citations?.enabled
+        ? buildCitationSchema(actualSchema, config.citations)
+        : actualSchema;
+
+      // Build hybrid prompt
+      const schemaTitle = (actualSchema as any).title || 'the provided schema';
+      const schemaDescription = (actualSchema as any).description || '';
+
+      let promptText = `You are extracting structured data from a document.
+
+You have access to BOTH:
+1. PARSED TEXT - OCR/parsed content for precise values and text
+2. ORIGINAL DOCUMENT - The visual document for layout verification
+
+TASK: Extract all relevant data according to ${schemaTitle}.
+${schemaDescription ? `\nCONTEXT: ${schemaDescription}` : ''}
+
+INSTRUCTIONS:
+- Use PARSED TEXT for accurate field values (numbers, dates, names)
+- Use ORIGINAL DOCUMENT to verify layout and visual elements
+- For ambiguous values, trust the visual document over parsed text
+- For missing or unclear fields, use null
+- Preserve exact text for reference numbers and addresses
+
+${documentText}
+
+Extract the structured data now:`;
+
+      if (enhanced?.extractionRules) {
+        promptText = promptText.replace('Extract the structured data now:',
+          `EXTRACTION RULES:\n${enhanced.extractionRules}\n\nExtract the structured data now:`);
+      }
+
+      if (config.additionalInstructions) {
+        promptText = promptText.replace('Extract the structured data now:',
+          `ADDITIONAL INSTRUCTIONS:\n${config.additionalInstructions}\n\nExtract the structured data now:`);
+      }
+
+      if (config.additionalPrompt) {
+        promptText = promptText.replace('Extract the structured data now:',
+          `ADDITIONAL INSTRUCTIONS:\n${config.additionalPrompt}\n\nExtract the structured data now:`);
+      }
+
+      // Detect source type and build multimodal prompt
+      const sourceUrl = source.base64 || source.url;
+      const detectedType = detectDocumentType(sourceUrl);
+      const isPDF = detectedType === 'application/pdf';
+
+      preparedPrompt = {
+        text: promptText,
+        images: sourceUrl && !isPDF ? [{ base64: sourceUrl, mimeType: detectedType as any }] : undefined,
+        pdfs: sourceUrl && isPDF ? [{ base64: sourceUrl }] : undefined
+      };
+
+    } else if (isDocumentIR && ir) {
+      // === TEXT-ONLY PATH (existing DocumentIR logic) ===
       sourceIR = ir;
 
       // Collect structured formats (markdown/html) and plain text
       const markdown = ir.pages.map((p: IRPage) => p.markdown).filter(Boolean).join('\n\n---PAGE BREAK---\n\n');
       const html = ir.pages.map((p: IRPage) => p.html).filter(Boolean).join('\n\n---PAGE BREAK---\n\n');
-      const plainText = ir.pages.flatMap((p: IRPage) => p.lines.map((l: IRLine) => l.text)).join('\n');
+      const plainText = ir.pages.flatMap((p: IRPage) => p.lines.map((l: IRLine) => l.text ?? '')).join('\n');
 
       let documentText = '';
       let structuredFormat: 'markdown' | 'html' | null = null;
@@ -2264,8 +2559,8 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
 
         // Convert rendered messages to single prompt text
         prompt = rendered.messages.map((msg: any) => {
-          const content = msg.content[0];
-          return content.text || content;
+          const content = msg.content?.[0];
+          return content?.text ?? content ?? '';
         }).join('\n\n');
 
       } else {
@@ -2321,14 +2616,14 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
 
       preparedPrompt = prompt;
 
-    } else {
-      // FlowInput path (VLM direct)
+    } else if (source) {
+      // === SOURCE-ONLY PATH (VLM direct extraction) ===
       if (!isVLMProvider(config.provider)) {
         throw new Error('VLMProvider required for extracting from FlowInput');
       }
-      const flowInput = input as FlowInput;
 
-      const dataUrl = flowInput.base64 || flowInput.url;
+      // Use resolved source (handles useOriginalSource and artifact lookup)
+      const dataUrl = source.base64 || source.url;
       // Detect document type using magic bytes (fixes raw base64 PDF detection)
       const detectedType = detectDocumentType(dataUrl);
       const isPDF = detectedType === 'application/pdf';
@@ -2387,8 +2682,8 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
 
         // Convert rendered messages to single prompt text
         promptText = rendered.messages.map((msg: any) => {
-          const content = msg.content[0];
-          return content.text || content;
+          const content = msg.content?.[0];
+          return content?.text ?? content ?? '';
         }).join('\n\n');
 
       } else {
@@ -2421,6 +2716,12 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
         images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
         pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
       };
+    } else {
+      // No valid input configuration
+      throw new Error(
+        `Invalid extract configuration: effectiveMode="${effectiveMode}" but ` +
+        `ir=${!!ir}, source=${!!source}. Check your flow inputs and inputMode setting.`
+      );
     }
 
     const prepTimeMs = Date.now() - prepStartTime;
@@ -2547,7 +2848,7 @@ export function chunk(config: ChunkNodeConfig) {
       const doc = documents[docIdx];
       for (let pageIdx = 0; pageIdx < doc.pages.length; pageIdx++) {
         const page = doc.pages[pageIdx];
-        const pageText = page.lines.map((l: IRLine) => l.text).join('\n');
+        const pageText = page.lines.map((l: IRLine) => l.text ?? '').join('\n');
         const startChar = fullText.length;
         fullText += pageText + '\n\n';  // Add page break
         const endChar = fullText.length;

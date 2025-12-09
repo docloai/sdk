@@ -94,9 +94,19 @@ export type BatchFlowResult = { results: FlowResult<any>[] };
 /**
  * Type representing the built flow object returned by Flow.build()
  */
+/**
+ * Options for running a built flow
+ */
+export interface FlowRunOptions {
+  /** Progress callbacks for step execution */
+  callbacks?: FlowProgressCallbacks;
+  /** Initial artifacts to merge into the flow context (for forEach child flows) */
+  initialArtifacts?: Record<string, any>;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type BuiltFlow<TInput = any, TOutput = any> = {
-  run: (input: TInput, callbacks?: FlowProgressCallbacks) => Promise<FlowResult<TOutput> | BatchFlowResult>;
+  run: (input: TInput, callbacksOrOptions?: FlowProgressCallbacks | FlowRunOptions) => Promise<FlowResult<TOutput> | BatchFlowResult>;
   validate: () => FlowValidationResult;
 };
 
@@ -438,8 +448,23 @@ export class Flow<TInput = any, TOutput = any> {
    */
   build(): BuiltFlow<TInput, TOutput> {
     return {
-      run: async (input: TInput, callbacks?: FlowProgressCallbacks) => {
-        return this.execute(input, callbacks);
+      run: async (input: TInput, callbacksOrOptions?: FlowProgressCallbacks | FlowRunOptions) => {
+        // Support both legacy callback-only signature and new options object
+        let callbacks: FlowProgressCallbacks | undefined;
+        let initialArtifacts: Record<string, any> | undefined;
+
+        if (callbacksOrOptions) {
+          if ('callbacks' in callbacksOrOptions || 'initialArtifacts' in callbacksOrOptions) {
+            // New options object format
+            callbacks = (callbacksOrOptions as FlowRunOptions).callbacks;
+            initialArtifacts = (callbacksOrOptions as FlowRunOptions).initialArtifacts;
+          } else {
+            // Legacy callbacks format
+            callbacks = callbacksOrOptions as FlowProgressCallbacks;
+          }
+        }
+
+        return this.execute(input, callbacks, initialArtifacts);
       },
       validate: () => {
         return this.validate();
@@ -742,9 +767,10 @@ export class Flow<TInput = any, TOutput = any> {
   /**
    * Execute the flow with optional progress callbacks
    */
-  private async execute(input: any, callbacks?: FlowProgressCallbacks): Promise<any> {
+  private async execute(input: any, callbacks?: FlowProgressCallbacks, initialArtifacts?: Record<string, any>): Promise<any> {
     const flowStartTime = Date.now();
-    const artifacts: Record<string, any> = {};
+    // Merge initial artifacts if provided (used for passing original source to forEach child flows)
+    const artifacts: Record<string, any> = initialArtifacts ? { ...initialArtifacts } : {};
     const metrics: StepMetric[] = [];
     const completedSteps: string[] = [];
     const outputs: Record<string, any> = {};  // Store output node results
@@ -804,6 +830,10 @@ export class Flow<TInput = any, TOutput = any> {
     // Normalize input format to handle various input types
     // (data URLs, HTTP URLs, raw base64, FlowInput objects)
     let currentData = normalizeFlowInput(input);
+
+    // Store original flow input for source reference in extract nodes
+    // This enables inputMode='ir+source' to access the original document
+    artifacts.__flowInput = currentData;
 
     // Validate input format if configured
     if (this.inputValidation?.acceptedFormats?.length) {
@@ -933,7 +963,7 @@ export class Flow<TInput = any, TOutput = any> {
             // (output nodes don't change the data flow, they just mark outputs)
             currentData = lastNonOutputData !== null ? lastNonOutputData : currentData;
           } else {
-            // Regular sequential step
+            // Regular sequential step - pass flow artifacts for source access
             result = await runPipeline([step.node], currentData, this.observability && sampled ? {
               config: this.observability,
               flowId: 'flow',
@@ -945,7 +975,7 @@ export class Flow<TInput = any, TOutput = any> {
             } : {
               // Always pass stepId for metrics tracking, even without observability
               stepId: step.id
-            });
+            }, artifacts);
 
             // Store the original output in artifacts (preserve wrapped data)
             artifacts[step.id] = result.output;
@@ -1305,7 +1335,14 @@ export class Flow<TInput = any, TOutput = any> {
               // If item is a SplitDocument (has .input property), pass the input to the child flow
               // Otherwise pass the item itself
               const flowInput = item && typeof item === 'object' && 'input' in item ? item.input : item;
-              const result = await builtFlow.run(flowInput);
+
+              // Pass original flow input to child flow for extract node's useOriginalSource option
+              // __flowInput will be the segment source, __originalFlowInput is the pre-split source
+              const childInitialArtifacts = {
+                __originalFlowInput: artifacts.__flowInput,  // Original source before split
+              };
+
+              const result = await builtFlow.run(flowInput, { initialArtifacts: childInitialArtifacts });
 
               // Handle both FlowResult and { results: FlowResult[] }
               let itemResult;

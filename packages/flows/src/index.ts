@@ -6,7 +6,18 @@ import { simpleSchema } from "./schemas";
 export * from "./schemas";
 
 // Export new flow builder API
-export { createFlow, type FlowContext, type FlowProgressCallbacks, type FlowValidationResult, type BuiltFlow, type FlowOptions } from "./flow-builder";
+export {
+  createFlow,
+  isSingleFlowResult,
+  isBatchFlowResult,
+  type FlowContext,
+  type FlowProgressCallbacks,
+  type FlowValidationResult,
+  type BuiltFlow,
+  type FlowOptions,
+  type FlowRunOptions,
+  type BatchFlowResult,
+} from "./flow-builder";
 export { parse, split, categorize, extract, chunk, combine, trigger } from "@doclo/nodes";
 
 // Re-export observability types for flow hooks

@@ -600,6 +600,20 @@ export type CategorizeNodeConfig = {
   };
 };
 
+/**
+ * Controls what inputs the extract node ingests.
+ * - 'auto': Automatically detect input type and route appropriately (default)
+ * - 'ir': Only DocumentIR from previous step (text-only extraction)
+ * - 'ir+source': Both DocumentIR AND source document (multimodal with parsed text)
+ * - 'source': Only raw source document (direct VLM extraction, no parsed text)
+ *
+ * Auto mode logic:
+ * - If DocumentIR available AND source available AND VLM provider -> 'ir+source'
+ * - If only DocumentIR available -> 'ir'
+ * - If only FlowInput available AND VLM provider -> 'source'
+ */
+export type ExtractInputMode = 'auto' | 'ir' | 'ir+source' | 'source';
+
 export type ExtractNodeConfig<T = any> = {
   provider: LLMProvider | VLMProvider;
   schema: object | EnhancedExtractionSchema<T> | { ref: string };  // Accept plain, enhanced, or reference
@@ -643,6 +657,32 @@ export type ExtractNodeConfig<T = any> = {
    * ```
    */
   additionalInstructions?: string;
+
+  /**
+   * Controls what inputs the extract node ingests.
+   * - 'auto': Automatically detect input type and route appropriately (default)
+   * - 'ir': Only DocumentIR from previous step (text-only extraction)
+   * - 'ir+source': Both DocumentIR AND source document (multimodal with parsed text)
+   * - 'source': Only raw source document (direct VLM extraction, no parsed text)
+   * @default 'auto'
+   */
+  inputMode?: ExtractInputMode;
+
+  /**
+   * In split/forEach contexts, use the original unsplit document instead of the segment.
+   * Only applies when inputMode includes source ('ir+source' or 'source').
+   * @default false (uses split segment source)
+   */
+  useOriginalSource?: boolean;
+
+  /**
+   * When auto mode has both IR and source available with VLM provider:
+   * - true: use 'ir+source' for maximum context (hybrid multimodal)
+   * - false: use 'ir' for text-only extraction (lower cost)
+   * Only applies when inputMode='auto'.
+   * @default true
+   */
+  preferVisual?: boolean;
 };
 
 /** Chunk output structure */
@@ -907,9 +947,12 @@ export async function runPipeline(
   steps: NodeDef<any, any>[],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   input: any,
-  observabilityContext?: NodeObservabilityContext
+  observabilityContext?: NodeObservabilityContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  flowArtifacts?: Record<string, any>
 ) {
-  const artifacts: Record<string, unknown> = {};
+  // Merge flow artifacts with local (flow artifacts as read-only base for source access)
+  const artifacts: Record<string, unknown> = flowArtifacts ? { ...flowArtifacts } : {};
   const metrics: StepMetric[] = [];
   const ctx: NodeCtx = {
     stepId: observabilityContext?.stepId,
