@@ -548,7 +548,7 @@ export type SplitNodeConfig = {
 
 export type CategorizeNodeConfig = {
   provider: LLMProvider | VLMProvider;
-  categories: string[];
+  categories: (string | { name: string; description?: string })[];
   consensus?: ConsensusConfig;
   additionalPrompt?: string;        // Custom categorization instructions
 

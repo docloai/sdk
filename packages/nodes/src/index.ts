@@ -1739,6 +1739,18 @@ export function split(config: SplitNodeConfig) {
   return splitNode;
 }
 
+/**
+ * Format categories for inclusion in AI prompt.
+ * Produces readable format with descriptions when available.
+ */
+function formatCategoriesForPrompt(categories: (string | { name: string; description?: string })[]): string {
+  return categories.map(cat => {
+    if (typeof cat === 'string') return `- ${cat}`;
+    if (cat?.description) return `- ${cat.name}: ${cat.description}`;
+    return `- ${cat.name}`;
+  }).join('\n');
+}
+
 /** Categorize node - LLM/VLM categorizes content */
 export function categorize(config: CategorizeNodeConfig) {
   validateProviderCompatibility('categorize', config.provider, {
@@ -1756,6 +1768,9 @@ export function categorize(config: CategorizeNodeConfig) {
         if (cat && typeof cat === 'object' && 'name' in cat) return cat.name;
         return String(cat);
       });
+
+      // Format categories with descriptions for the prompt
+      const formattedCategories = formatCategoriesForPrompt(config.categories);
 
       const schema = {
         type: 'object' as const,
@@ -1825,7 +1840,7 @@ export function categorize(config: CategorizeNodeConfig) {
           // Render prompt with variables
           // Auto-injected variables first, then user variables can override
           const variables = {
-            categories: normalizedCategories,
+            categories: formattedCategories,
             documentText: text,
             ...config.promptVariables
           };
@@ -1850,7 +1865,7 @@ export function categorize(config: CategorizeNodeConfig) {
 
         } else {
           // Fall back to default prompt
-          prompt = `Categorize this document as one of: ${normalizedCategories.join(', ')}`;
+          prompt = `Categorize this document into one of the following categories:\n\n${formattedCategories}`;
           if (config.additionalPrompt) {
             prompt += `\n\nAdditional guidance:\n${config.additionalPrompt}`;
           }
@@ -1910,7 +1925,7 @@ export function categorize(config: CategorizeNodeConfig) {
           // Render prompt with variables
           // Auto-injected variables first, then user variables can override
           const variables = {
-            categories: normalizedCategories,
+            categories: formattedCategories,
             ...config.promptVariables
           };
 
@@ -1934,7 +1949,7 @@ export function categorize(config: CategorizeNodeConfig) {
 
         } else {
           // Fall back to default prompt
-          promptText = `Categorize this document as one of: ${normalizedCategories.join(', ')}`;
+          promptText = `Categorize this document into one of the following categories:\n\n${formattedCategories}`;
           if (config.additionalPrompt) {
             promptText += `\n\nAdditional guidance:\n${config.additionalPrompt}`;
           }

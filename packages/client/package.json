@@ -29,7 +29,7 @@
     "test:watch": "vitest"
   },
   "peerDependencies": {
-    "@doclo/core": "^0.1.5",
+    "@doclo/core": "^0.1.7",
     "@doclo/flows": "^0.1.0",
     "@doclo/prompts": "^0.1.0",
     "@doclo/schemas": "^0.1.0"

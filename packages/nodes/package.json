@@ -1,6 +1,6 @@
 {
   "name": "@doclo/nodes",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "Processing nodes for document extraction and transformation",
   "license": "MIT",
   "repository": {
@@ -27,10 +27,10 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@doclo/core": "workspace:*",
-    "@doclo/prompts": "workspace:*",
-    "@doclo/schemas": "workspace:*",
-    "@doclo/providers-llm": "workspace:*",
+    "@doclo/core": "workspace:^",
+    "@doclo/prompts": "workspace:^",
+    "@doclo/schemas": "workspace:^",
+    "@doclo/providers-llm": "workspace:^",
     "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
