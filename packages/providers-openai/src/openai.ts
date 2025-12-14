@@ -103,6 +103,11 @@ export class OpenAIProvider implements LLMProvider {
       }
     };
 
+    // Add response healing plugin for OpenRouter (improves JSON reliability)
+    if (this.config.via === 'openrouter') {
+      requestBody.plugins = [{ id: 'response-healing' }];
+    }
+
     // Set response_format based on mode
     if (mode === 'relaxed') {
       // Relaxed mode: just request valid JSON without strict schema validation

@@ -1007,9 +1007,17 @@ function isOCRProvider(provider: any): provider is OCRProvider {
   return 'parseToIR' in provider && typeof provider.parseToIR === 'function';
 }
 
-/** Check if provider is LLM */
+/** Check if provider is LLM (text-only provider with completeJson) */
 function isLLMProvider(provider: any): provider is LLMProvider {
-  return 'completeJson' in provider && !('capabilities' in provider);
+  // Provider with completeJson and no capabilities (legacy)
+  if ('completeJson' in provider && !('capabilities' in provider)) {
+    return true;
+  }
+  // Provider with completeJson and capabilities but NOT supporting images (text-only LLM)
+  if ('completeJson' in provider && 'capabilities' in provider && provider.capabilities?.supportsImages !== true) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -1753,10 +1761,13 @@ function formatCategoriesForPrompt(categories: (string | { name: string; descrip
 
 /** Categorize node - LLM/VLM categorizes content */
 export function categorize(config: CategorizeNodeConfig) {
+  // Categorize can work with either DocumentIR (text) or FlowInput (visual)
+  // LLM providers work for DocumentIR input; VLM providers work for both
+  // Runtime validation at line 1893 ensures VLM is used for FlowInput
   validateProviderCompatibility('categorize', config.provider, {
-    requiresVLM: true,
+    requiresVLM: false,  // Allow LLM for DocumentIR input (runtime checks VLM for FlowInput)
     acceptsOCR: false,
-    acceptsLLM: false
+    acceptsLLM: true     // LLM can categorize DocumentIR text
   });
 
   const categorizeNode = node<DocumentIR | FlowInput, { input: DocumentIR | FlowInput; category: string }>("categorize", async (input: DocumentIR | FlowInput, ctx: NodeCtx) => {
@@ -2351,15 +2362,18 @@ function resolveExtractInputs(
 
 /** Extract node - LLM/VLM extracts structured data with optional citation tracking */
 export function extract<T = any>(config: ExtractNodeConfig<T>) {
-  validateProviderCompatibility('extract', config.provider, {
-    requiresVLM: true,
-    acceptsOCR: false,
-    acceptsLLM: false
-  });
-
-  // For 'auto' mode, defer provider validation to runtime (resolveAutoInputMode handles it)
-  // Only validate for explicit modes
   const configuredMode = config.inputMode ?? 'auto';
+
+  // For text-only extraction (inputMode='ir'), LLM providers are acceptable
+  // For visual modes ('source', 'ir+source'), VLM is required
+  const requiresVLM = configuredMode !== 'ir';
+  const acceptsLLM = configuredMode === 'ir';
+
+  validateProviderCompatibility('extract', config.provider, {
+    requiresVLM,
+    acceptsOCR: false,
+    acceptsLLM
+  });
 
   if (configuredMode !== 'auto') {
     // Warn if VLM provider explicitly used with inputMode='ir' (text-only, missing visual context)

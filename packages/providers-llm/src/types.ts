@@ -3,8 +3,8 @@ import type { JSONSchemaType } from "ajv";
 /** Unified internal schema (standard JSON Schema) */
 export type UnifiedSchema<T = any> = JSONSchemaType<T>;
 
-/** Provider types - 'x-ai' is an alias for 'xai' */
-export type ProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'x-ai';
+/** Provider types - 'x-ai' is an alias for 'xai', 'generic-or' for generic OpenRouter models */
+export type ProviderType = 'openai' | 'anthropic' | 'google' | 'xai' | 'x-ai' | 'generic-or';
 
 /** Access method */
 export type AccessMethod = 'openrouter' | 'native';

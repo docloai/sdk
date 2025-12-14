@@ -21,6 +21,32 @@ const GEN_AI_SYSTEMS: Record<string, string> = {
   huggingface: 'huggingface',
   openrouter: 'openrouter', // Custom system
   ollama: 'ollama', // Custom system
+  // Generic OpenRouter vendors (extracted from model IDs like 'qwen/qwen3-235b')
+  // Full list from: curl -s "https://openrouter.ai/api/v1/models" | jq '[.data[].id | split("/")[0]] | unique | sort'
+  'generic-or': 'openrouter',
+  qwen: 'qwen',
+  'meta-llama': 'meta',
+  deepseek: 'deepseek',
+  'z-ai': 'zhipu', // GLM models
+  moonshotai: 'moonshot',
+  mistralai: 'mistral',
+  opengvlab: 'opengvlab',
+  'stepfun-ai': 'stepfun',
+  nvidia: 'nvidia',
+  'x-ai': 'xai', // Grok models
+  yi: 'yi',
+  microsoft: 'microsoft',
+  databricks: 'databricks',
+  thudm: 'zhipu', // THU models (GLM)
+  internlm: 'internlm',
+  amazon: 'amazon', // Nova models
+  baidu: 'baidu', // ERNIE models
+  bytedance: 'bytedance', // UI-TARS
+  minimax: 'minimax',
+  tencent: 'tencent', // Hunyuan
+  alibaba: 'alibaba', // Tongyi
+  perplexity: 'perplexity',
+  inflection: 'inflection',
 };
 
 /**

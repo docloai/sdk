@@ -447,7 +447,9 @@ export class AnthropicProvider implements LLMProvider {
       // Enable usage tracking for OpenRouter cost info
       usage: {
         include: true
-      }
+      },
+      // Enable response healing plugin for better JSON reliability (OpenRouter)
+      plugins: [{ id: 'response-healing' }]
     };
 
     if (mode === 'relaxed') {

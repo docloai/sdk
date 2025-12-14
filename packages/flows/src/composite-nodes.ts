@@ -5,7 +5,8 @@
  * into single logical steps with proper observability, metrics, and error handling.
  */
 
-import type { NodeDef, StepMetric, VLMProvider, FlowResult, NodeCtx, FlowInput, SplitDocument } from '@doclo/core';
+import type { NodeDef, StepMetric, VLMProvider, FlowResult, NodeCtx, FlowInput, SplitDocument, FlowStepLocation } from '@doclo/core';
+import { FlowExecutionError } from '@doclo/core';
 import { buildFlowFromConfig, type ProviderRegistry } from './serialization.js';
 import type { SerializableFlow, FlowReference, CategorizeConfig, SplitConfig } from './serialization.js';
 import { categorize, split } from '@doclo/nodes';
@@ -244,6 +245,7 @@ export function createConditionalCompositeNode(
 
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
+        const isNestedFlowError = err instanceof FlowExecutionError;
 
         // Add error metric
         if (ctx?.metrics) {
@@ -266,11 +268,38 @@ export function createConditionalCompositeNode(
           });
         }
 
-        // Wrap error with full context
-        throw new Error(
-          `Conditional step "${stepId}" failed ` +
-          `(${selectedCategory ? `category: ${selectedCategory}, ` : ''}phase: ${phase}): ` +
-          err.message
+        // Build flow path with branch context
+        const flowPath: FlowStepLocation[] = [{
+          stepId,
+          stepIndex: 0,
+          stepType: 'conditional',
+          branch: selectedCategory || undefined
+        }];
+
+        // If inner error is FlowExecutionError, extend its path
+        if (isNestedFlowError && err.flowPath) {
+          flowPath.push(...err.flowPath);
+        }
+
+        // Get the root cause message for cleaner error display
+        const rootCauseMessage = isNestedFlowError
+          ? err.getRootCause().message
+          : err.message;
+
+        // Throw FlowExecutionError with full context
+        throw new FlowExecutionError(
+          `Conditional step "${stepId}" failed` +
+          `${selectedCategory ? ` (category: ${selectedCategory})` : ''}` +
+          ` in phase: ${phase}` +
+          `\n  Error: ${rootCauseMessage}`,
+          stepId,
+          0,
+          'conditional',
+          [],
+          isNestedFlowError ? err.originalError : err,
+          undefined,
+          flowPath,
+          isNestedFlowError ? err.allCompletedSteps : undefined
         );
       }
     }
@@ -475,6 +504,7 @@ export function createForEachCompositeNode(
 
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
+        const isNestedFlowError = err instanceof FlowExecutionError;
 
         // Add error metric
         if (ctx?.metrics) {
@@ -497,11 +527,37 @@ export function createForEachCompositeNode(
           });
         }
 
-        // Wrap error with full context
-        throw new Error(
-          `ForEach step "${stepId}" failed ` +
-          `(${items ? `itemCount: ${items.length}, ` : ''}phase: ${phase}): ` +
-          err.message
+        // Build flow path with forEach context
+        const flowPath: FlowStepLocation[] = [{
+          stepId,
+          stepIndex: 0,
+          stepType: 'forEach'
+        }];
+
+        // If inner error is FlowExecutionError, extend its path
+        if (isNestedFlowError && err.flowPath) {
+          flowPath.push(...err.flowPath);
+        }
+
+        // Get the root cause message for cleaner error display
+        const rootCauseMessage = isNestedFlowError
+          ? err.getRootCause().message
+          : err.message;
+
+        // Throw FlowExecutionError with full context
+        throw new FlowExecutionError(
+          `ForEach step "${stepId}" failed` +
+          `${items ? ` (itemCount: ${items.length})` : ''}` +
+          ` in phase: ${phase}` +
+          `\n  Error: ${rootCauseMessage}`,
+          stepId,
+          0,
+          'forEach',
+          [],
+          isNestedFlowError ? err.originalError : err,
+          undefined,
+          flowPath,
+          isNestedFlowError ? err.allCompletedSteps : undefined
         );
       }
     }

@@ -27,7 +27,7 @@ export type BaseProviderConfig = {
  */
 export type VLMProviderConfig = BaseProviderConfig & {
   type: 'vlm';
-  provider: 'openai' | 'anthropic' | 'google' | 'xai';
+  provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'generic-or';
   model: string;
   via?: 'openrouter' | 'native';
   baseUrl?: string;

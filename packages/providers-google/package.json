@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-google",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Google Gemini provider integration for LLM and VLM operations",
   "license": "MIT",
   "repository": {
@@ -29,8 +29,8 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@doclo/core": "workspace:*",
-    "@doclo/providers-llm": "workspace:*"
+    "@doclo/core": "workspace:^",
+    "@doclo/providers-llm": "workspace:^"
   },
   "devDependencies": {
     "@types/node": "^20",

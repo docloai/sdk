@@ -410,8 +410,10 @@ export class GoogleProvider implements LLMProvider {
       // Schema is already in the prompt via combineSchemaAndUserPrompt
       response_format: {
         type: 'json_object'
-      }
-    };
+      },
+      // Enable response healing plugin for better JSON reliability
+      plugins: [{ id: 'response-healing' }]
+    } as OpenRouterRequest & { plugins: Array<{ id: string }> };
 
     // Add reasoning configuration if provided (Google uses max_tokens like Anthropic)
     if (reasoning) {

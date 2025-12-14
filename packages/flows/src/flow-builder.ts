@@ -18,7 +18,8 @@ import {
   type NodeTypeName,
   type NodeCtx,
   type OutputNodeConfig,
-  type AcceptedMimeType
+  type AcceptedMimeType,
+  type FlowStepLocation
 } from "@doclo/core";
 import { shouldSkipValidation } from "@doclo/core/runtime/env";
 
@@ -1519,26 +1520,49 @@ export class Flow<TInput = any, TOutput = any> {
           });
         }
 
+        // Check if the error is from a nested flow
+        const isNestedFlowError = err instanceof FlowExecutionError;
+
         // Build helpful error message with context
-        const completedStepsStr = completedSteps.length > 0
-          ? `\n  Completed steps: ${completedSteps.join(' → ')}`
-          : '\n  No steps completed before failure';
+        // Only add completedStepsStr for the outermost error (avoid duplicates)
+        const completedStepsStr = isNestedFlowError
+          ? ''  // Inner error already has this context
+          : (completedSteps.length > 0
+            ? `\n  Completed steps: ${completedSteps.join(' → ')}`
+            : '\n  No steps completed before failure');
 
         const artifactsStr = Object.keys(artifacts).length > 0
           ? `\n  Partial results available in: ${Object.keys(artifacts).join(', ')}`
           : '';
 
+        // Aggregate all completed steps across flow boundaries
+        const allCompleted = isNestedFlowError
+          ? [...(err.allCompletedSteps || err.completedSteps), ...completedSteps]
+          : completedSteps;
+
+        // Build flow path (extend nested path or create new)
+        const flowPath: FlowStepLocation[] = isNestedFlowError && err.flowPath
+          ? [...err.flowPath, { stepId: step.id, stepIndex, stepType: step.type }]
+          : [{ stepId: step.id, stepIndex, stepType: step.type }];
+
+        // Get root cause message for cleaner error display
+        const errorMessage = isNestedFlowError
+          ? err.getRootCause().message
+          : err.message;
+
         throw new FlowExecutionError(
           `Flow execution failed at step "${step.id}" (index ${stepIndex}, type: ${step.type})` +
-          `\n  Error: ${err.message}` +
+          `\n  Error: ${errorMessage}` +
           completedStepsStr +
           artifactsStr,
           step.id,
           stepIndex,
           step.type,
           completedSteps,
-          err,
-          artifacts  // Include partial artifacts for debugging
+          isNestedFlowError ? err.originalError : err,
+          artifacts,  // Include partial artifacts for debugging
+          flowPath,
+          allCompleted
         );
       }
     }

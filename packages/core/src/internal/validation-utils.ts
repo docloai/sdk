@@ -1000,6 +1000,83 @@ export async function runPipeline(
  * }
  * ```
  */
+
+/**
+ * Extracts a human-readable error message from potentially JSON error responses.
+ *
+ * Handles common API error formats:
+ * - { "detail": "..." } (Surya-style)
+ * - { "error": { "message": "..." } } (OpenAI, Anthropic)
+ * - { "error": "..." } (Simple format)
+ * - { "message": "..." } (Direct format)
+ * - Plain text (returned as-is)
+ *
+ * @param errorText - The error text which may contain JSON
+ * @returns A human-readable error message
+ */
+export function extractErrorMessage(errorText: string): string {
+  // If it's short or doesn't look like JSON, return as-is
+  if (errorText.length < 10 || !errorText.trim().startsWith('{')) {
+    return errorText;
+  }
+
+  try {
+    const parsed = JSON.parse(errorText);
+
+    // Surya-style: { "detail": "..." }
+    if (parsed.detail) {
+      return parsed.detail;
+    }
+
+    // OpenAI/Anthropic style: { error: { message: "..." } }
+    if (parsed.error?.message) {
+      return parsed.error.message;
+    }
+
+    // Simple style: { error: "..." }
+    if (typeof parsed.error === 'string') {
+      return parsed.error;
+    }
+
+    // Direct style: { message: "..." }
+    if (parsed.message) {
+      return parsed.message;
+    }
+
+    // Google style: { error: { status: "...", message: "..." } }
+    if (parsed.error?.status && parsed.error?.message) {
+      return `${parsed.error.status}: ${parsed.error.message}`;
+    }
+
+    // Fallback: return original but truncated if very long
+    return errorText.length > 200
+      ? errorText.substring(0, 200) + '...'
+      : errorText;
+  } catch {
+    // Not valid JSON, return as-is (truncated if needed)
+    return errorText.length > 500
+      ? errorText.substring(0, 500) + '...'
+      : errorText;
+  }
+}
+
+/**
+ * Represents a step location in a flow hierarchy.
+ * Used to track the execution path through nested flows.
+ */
+export interface FlowStepLocation {
+  /** Step ID */
+  stepId: string;
+  /** Step index within this flow (0-based) */
+  stepIndex: number;
+  /** Step type (e.g., 'parse', 'conditional', 'forEach') */
+  stepType: string;
+  /** Branch name if within a conditional (e.g., "Invoice", "Receipt") */
+  branch?: string;
+  /** Item index if within a forEach iteration */
+  itemIndex?: number;
+}
+
 export class FlowExecutionError extends Error {
   constructor(
     message: string,
@@ -1014,7 +1091,11 @@ export class FlowExecutionError extends Error {
     /** The original error that caused the failure */
     public readonly originalError: Error,
     /** Partial artifacts from steps that completed before the failure */
-    public readonly partialArtifacts?: Record<string, any>
+    public readonly partialArtifacts?: Record<string, any>,
+    /** Execution path through nested flows (for hierarchical context) */
+    public readonly flowPath?: FlowStepLocation[],
+    /** All completed steps aggregated across flow boundaries */
+    public readonly allCompletedSteps?: string[]
   ) {
     super(message);
     this.name = 'FlowExecutionError';
@@ -1023,6 +1104,39 @@ export class FlowExecutionError extends Error {
     if (Error.captureStackTrace) {
       Error.captureStackTrace(this, FlowExecutionError);
     }
+  }
+
+  /**
+   * Returns a formatted string showing the execution path.
+   * Example: "parse → conditional:Invoice → extract"
+   */
+  getFormattedPath(): string {
+    if (!this.flowPath || this.flowPath.length === 0) {
+      return this.failedStep;
+    }
+
+    return this.flowPath.map(loc => {
+      let label = loc.stepId;
+      if (loc.branch) {
+        label += `:${loc.branch}`;
+      }
+      if (loc.itemIndex !== undefined) {
+        label += `[${loc.itemIndex}]`;
+      }
+      return label;
+    }).join(' → ');
+  }
+
+  /**
+   * Returns the root cause error (innermost originalError).
+   * Useful when errors are nested multiple levels deep.
+   */
+  getRootCause(): Error {
+    let cause: Error = this.originalError;
+    while (cause instanceof FlowExecutionError && cause.originalError) {
+      cause = cause.originalError;
+    }
+    return cause;
   }
 }
 

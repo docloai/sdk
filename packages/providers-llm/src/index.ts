@@ -78,7 +78,7 @@ if (!providerRegistry.has('xai')) {
  * @returns CoreVLMProvider instance (no retry/fallback wrapper)
  */
 export function createVLMProvider(config: {
-  provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'x-ai';
+  provider: 'openai' | 'anthropic' | 'google' | 'xai' | 'x-ai' | 'generic-or';
   model: string;
   apiKey: string;
   via?: 'openrouter';

@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-llm",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Core LLM provider utilities, types, and schema translation for Doclo SDK",
   "license": "MIT",
   "repository": {
@@ -30,14 +30,15 @@
   },
   "dependencies": {
     "@alcyone-labs/zod-to-json-schema": "^4.0.10",
-    "@doclo/core": "workspace:*",
+    "@doclo/core": "workspace:^",
     "ajv": "^8.17.1"
   },
   "peerDependencies": {
-    "@doclo/providers-openai": "^0.1.0",
-    "@doclo/providers-anthropic": "^0.1.0",
-    "@doclo/providers-google": "^0.1.0",
-    "@doclo/providers-xai": "^0.1.0"
+    "@doclo/providers-openai": "^0.1.1",
+    "@doclo/providers-anthropic": "^0.1.1",
+    "@doclo/providers-google": "^0.1.1",
+    "@doclo/providers-xai": "^0.1.1",
+    "@doclo/providers-generic-or": "^0.1.0"
   },
   "peerDependenciesMeta": {
     "@doclo/providers-openai": {
@@ -50,6 +51,9 @@
       "optional": true
     },
     "@doclo/providers-xai": {
+      "optional": true
+    },
+    "@doclo/providers-generic-or": {
       "optional": true
     }
   },

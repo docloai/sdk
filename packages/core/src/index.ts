@@ -66,7 +66,9 @@ export type {
   ExtractedImage,
   OCRProviderOptions,
   VLMProviderOptions,
-  ProviderCitation
+  ProviderCitation,
+  // Error handling types
+  FlowStepLocation
 } from './internal/validation-utils.js';
 
 export {
@@ -85,7 +87,9 @@ export {
   canStartForEachItemFlow,
   validateJson,
   RESERVED_VARIABLES,
-  protectReservedVariables
+  protectReservedVariables,
+  // Error handling utilities
+  extractErrorMessage
 } from './internal/validation-utils.js';
 
 // Re-export file utilities (Edge Runtime compatible)

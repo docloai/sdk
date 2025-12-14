@@ -1,6 +1,6 @@
 {
   "name": "@doclo/flows",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Flow orchestration and execution engine for document processing pipelines",
   "license": "MIT",
   "repository": {
