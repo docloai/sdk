@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-reducto",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Reducto provider integration for document parsing, extraction, and splitting",
   "license": "MIT",
   "repository": {

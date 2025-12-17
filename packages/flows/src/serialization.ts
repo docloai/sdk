@@ -153,6 +153,7 @@ export type ParseConfig = {
     strategy?: 'majority' | 'unanimous';
     onTie?: 'random' | 'fail' | 'retry';
   };
+  maxTokens?: number;
 };
 
 export type ExtractConfig = {
@@ -169,6 +170,7 @@ export type ExtractConfig = {
     effort?: 'low' | 'medium' | 'high';
     max_tokens?: number;
   };
+  maxTokens?: number;
 };
 
 export type SplitConfig = {
@@ -182,6 +184,7 @@ export type SplitConfig = {
     onTie?: 'random' | 'fail' | 'retry';
   };
   schemaRef?: string;  // Reference to schema asset (e.g., "document-split@2.0.0")
+  maxTokens?: number;
 };
 
 export type CategorizeConfig = {
@@ -194,6 +197,7 @@ export type CategorizeConfig = {
     onTie?: 'random' | 'fail' | 'retry';
   };
   promptRef?: string;  // Reference to prompt asset (e.g., "default-categorize@1.0.0")
+  maxTokens?: number;
 };
 
 export type TriggerConfig = {
@@ -549,7 +553,8 @@ function createNodeFromConfig(
       // parse expects OCRProvider
       return parse({
         provider: provider as OCRProvider,
-        consensus: cfg.consensus
+        consensus: cfg.consensus,
+        maxTokens: cfg.maxTokens
       });
     }
 
@@ -560,7 +565,8 @@ function createNodeFromConfig(
         provider: provider as VLMProvider,
         schema: cfg.schema,
         consensus: cfg.consensus,
-        reasoning: cfg.reasoning
+        reasoning: cfg.reasoning,
+        maxTokens: cfg.maxTokens
       });
     }
 
@@ -571,7 +577,8 @@ function createNodeFromConfig(
         provider: provider as VLMProvider,
         schemas: cfg.schemas,
         includeOther: cfg.includeOther,
-        consensus: cfg.consensus
+        consensus: cfg.consensus,
+        maxTokens: cfg.maxTokens
       });
     }
 
@@ -581,7 +588,8 @@ function createNodeFromConfig(
       return categorize({
         provider: provider as VLMProvider,
         categories: cfg.categories,
-        consensus: cfg.consensus
+        consensus: cfg.consensus,
+        maxTokens: cfg.maxTokens
       });
     }
 

@@ -6,12 +6,23 @@
 
 import { validateUrl, fetchWithTimeout, DEFAULT_LIMITS, validateFileSize } from "@doclo/core/security";
 import { base64ToArrayBuffer } from "@doclo/core/runtime/base64";
+import { withRetry, createCircuitBreaker, type RetryConfig, type CircuitBreakerConfig } from "@doclo/core";
 import type {
   ReductoUploadResponse,
   ReductoJobResponse,
   ReductoUsage,
 } from "./types.js";
 import { USD_PER_CREDIT } from "./types.js";
+
+/**
+ * Configuration for Reducto polling and retry behavior
+ */
+export interface ReductoPollingConfig extends RetryConfig, CircuitBreakerConfig {
+  /** Interval between polling attempts in milliseconds (default: 2000) */
+  pollInterval?: number;
+  /** Maximum number of polling attempts before timeout (default: 120) */
+  maxAttempts?: number;
+}
 
 // ============================================================================
 // Constants
@@ -105,33 +116,50 @@ export function getMimeType(filename: string): string {
  * @param filename - Original filename
  * @param apiKey - Reducto API key
  * @param endpoint - Optional custom endpoint
+ * @param retryConfig - Optional retry configuration
  * @returns Upload response with file_id
  */
 export async function uploadFile(
   file: ArrayBuffer,
   filename: string,
   apiKey: string,
-  endpoint: string = DEFAULT_ENDPOINT
+  endpoint: string = DEFAULT_ENDPOINT,
+  retryConfig?: ReductoPollingConfig
 ): Promise<ReductoUploadResponse> {
   const formData = new FormData();
   const mimeType = getMimeType(filename);
   const blob = new Blob([file], { type: mimeType });
   formData.append('file', blob, filename);
 
-  const resp = await fetchWithTimeout(`${endpoint}/upload`, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
+  // Get circuit breaker if configured
+  const circuitBreaker = retryConfig?.threshold !== undefined
+    ? createCircuitBreaker('reducto:upload', { threshold: retryConfig.threshold })
+    : undefined;
+
+  return withRetry(
+    async () => {
+      const resp = await fetchWithTimeout(`${endpoint}/upload`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: formData,
+      }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
+
+      if (!resp.ok) {
+        const errorText = await resp.text().catch(() => '');
+        throw new Error(`Reducto upload failed: ${resp.status} ${errorText}`);
+      }
+
+      return resp.json() as Promise<ReductoUploadResponse>;
     },
-    body: formData,
-  }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
-
-  if (!resp.ok) {
-    const errorText = await resp.text().catch(() => '');
-    throw new Error(`Reducto upload failed: ${resp.status} ${errorText}`);
-  }
-
-  return await resp.json() as ReductoUploadResponse;
+    {
+      maxRetries: retryConfig?.maxRetries ?? 0,
+      retryDelay: retryConfig?.retryDelay ?? 1000,
+      useExponentialBackoff: retryConfig?.useExponentialBackoff ?? true,
+      circuitBreaker,
+    }
+  );
 }
 
 // ============================================================================
@@ -144,35 +172,48 @@ export async function uploadFile(
  * @param jobId - Job ID to poll
  * @param apiKey - Reducto API key
  * @param endpoint - Optional custom endpoint
- * @param options - Polling options
+ * @param options - Polling and retry options
  * @returns Completed job result
  */
 export async function pollJob<T>(
   jobId: string,
   apiKey: string,
   endpoint: string = DEFAULT_ENDPOINT,
-  options: {
-    pollInterval?: number;
-    maxAttempts?: number;
-  } = {}
+  options: ReductoPollingConfig = {}
 ): Promise<T> {
   const pollInterval = options.pollInterval || DEFAULT_POLL_INTERVAL;
   const maxAttempts = options.maxAttempts || DEFAULT_MAX_POLL_ATTEMPTS;
 
+  // Get circuit breaker if configured
+  const circuitBreaker = options.threshold !== undefined
+    ? createCircuitBreaker('reducto:polling', { threshold: options.threshold })
+    : undefined;
+
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, pollInterval));
 
-    const resp = await fetchWithTimeout(`${endpoint}/job/${jobId}`, {
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
+    // Use retry for each polling request
+    const data = await withRetry(
+      async () => {
+        const resp = await fetchWithTimeout(`${endpoint}/job/${jobId}`, {
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+          },
+        }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
+
+        if (!resp.ok) {
+          throw new Error(`Reducto job polling failed: ${resp.status}`);
+        }
+
+        return resp.json() as Promise<ReductoJobResponse<T>>;
       },
-    }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
-
-    if (!resp.ok) {
-      throw new Error(`Reducto job polling failed: ${resp.status}`);
-    }
-
-    const data = await resp.json() as ReductoJobResponse<T>;
+      {
+        maxRetries: options.maxRetries ?? 0,
+        retryDelay: options.retryDelay ?? 1000,
+        useExponentialBackoff: options.useExponentialBackoff ?? true,
+        circuitBreaker,
+      }
+    );
 
     if (data.status === 'completed') {
       return data.result as T;
@@ -291,18 +332,34 @@ export function createHeaders(apiKey: string): Record<string, string> {
 export async function postJson<T>(
   url: string,
   body: Record<string, unknown>,
-  apiKey: string
+  apiKey: string,
+  retryConfig?: ReductoPollingConfig
 ): Promise<T> {
-  const resp = await fetchWithTimeout(url, {
-    method: 'POST',
-    headers: createHeaders(apiKey),
-    body: JSON.stringify(body),
-  }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
+  // Get circuit breaker if configured
+  const circuitBreaker = retryConfig?.threshold !== undefined
+    ? createCircuitBreaker('reducto:postJson', { threshold: retryConfig.threshold })
+    : undefined;
 
-  if (!resp.ok) {
-    const errorText = await resp.text().catch(() => '');
-    throw new Error(`Reducto API request failed: ${resp.status} ${errorText}`);
-  }
+  return withRetry(
+    async () => {
+      const resp = await fetchWithTimeout(url, {
+        method: 'POST',
+        headers: createHeaders(apiKey),
+        body: JSON.stringify(body),
+      }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
 
-  return await resp.json() as T;
+      if (!resp.ok) {
+        const errorText = await resp.text().catch(() => '');
+        throw new Error(`Reducto API request failed: ${resp.status} ${errorText}`);
+      }
+
+      return resp.json() as Promise<T>;
+    },
+    {
+      maxRetries: retryConfig?.maxRetries ?? 0,
+      retryDelay: retryConfig?.retryDelay ?? 1000,
+      useExponentialBackoff: retryConfig?.useExponentialBackoff ?? true,
+      circuitBreaker,
+    }
+  );
 }

@@ -189,3 +189,30 @@ export {
   getAllModels,
   clearModelRegistry
 } from './provider-query.js';
+
+// Re-export retry utilities
+export type {
+  RetryConfig,
+  CircuitBreakerConfig,
+  CircuitBreakerState,
+  CircuitBreaker,
+  WithRetryOptions
+} from './retry.js';
+
+export {
+  // Error classification
+  isRetryableError,
+  extractStatusCode,
+  parseRetryAfter,
+  // Delay calculation
+  calculateRetryDelay,
+  // Circuit breaker
+  createCircuitBreaker,
+  clearCircuitBreakers,
+  getCircuitBreaker,
+  // Retry wrapper
+  withRetry,
+  // Constants
+  DEFAULT_RETRY_CONFIG,
+  DEFAULT_CIRCUIT_BREAKER_CONFIG
+} from './retry.js';

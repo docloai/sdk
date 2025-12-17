@@ -1,5 +1,5 @@
 import type { VLMProvider, MultimodalInput, ProcessingMode, ProviderCitation, SegmentationResult, ProviderIdentity, ReasoningConfig } from "@doclo/core";
-import { isLocalEndpoint } from "@doclo/core";
+import { isLocalEndpoint, withRetry, createCircuitBreaker } from "@doclo/core";
 import { validateUrl, fetchWithTimeout, DEFAULT_LIMITS, validateFileSize, safeJsonParse } from "@doclo/core/security";
 import { base64ToArrayBuffer } from "@doclo/core/runtime/base64";
 import type { OCRPollingConfig } from "./types.js";
@@ -188,27 +188,42 @@ export function markerVLMProvider(opts: MarkerVLMOptions): VLMProvider {
         formData.append('segmentation_schema', JSON.stringify(input.segmentationSchema));
       }
 
-      // Submit request
+      // Get circuit breaker for this provider
+      const circuitBreaker = opts.polling?.threshold !== undefined
+        ? createCircuitBreaker('datalab:marker-vlm', { threshold: opts.polling.threshold })
+        : undefined;
+
+      // Submit request with retry logic
       const startTime = Date.now();
-      const resp = await fetchWithTimeout(endpoint, {
-        method: "POST",
-        headers: {
-          "X-API-Key": opts.apiKey
+      const result = await withRetry(
+        async () => {
+          const resp = await fetchWithTimeout(endpoint, {
+            method: "POST",
+            headers: {
+              "X-API-Key": opts.apiKey
+            },
+            body: formData
+          }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
+
+          if (!resp.ok) {
+            const errorText = await resp.text().catch(() => '');
+            throw new Error(`Marker API request failed: ${resp.status} ${errorText}`);
+          }
+
+          return resp.json() as Promise<{
+            request_id?: string;
+            request_check_url?: string;
+            status?: string;
+            [key: string]: any;
+          }>;
         },
-        body: formData
-      }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
-
-      if (!resp.ok) {
-        const errorText = await resp.text().catch(() => '');
-        throw new Error(`Marker API request failed: ${resp.status} ${errorText}`);
-      }
-
-      const result = await resp.json() as {
-        request_id?: string;
-        request_check_url?: string;
-        status?: string;
-        [key: string]: any;
-      };
+        {
+          maxRetries: opts.polling?.maxRetries ?? 0,
+          retryDelay: opts.polling?.retryDelay ?? 1000,
+          useExponentialBackoff: opts.polling?.useExponentialBackoff ?? true,
+          circuitBreaker,
+        }
+      );
 
       // Poll for completion
       let finalResult = result;
@@ -415,16 +430,34 @@ async function pollForCompletion(
   const maxAttempts = polling?.maxAttempts ?? 60;
   const pollingInterval = polling?.pollingInterval ?? 2000;
 
+  // Get circuit breaker if configured
+  const circuitBreaker = polling?.threshold !== undefined
+    ? createCircuitBreaker('datalab:marker-vlm:polling', { threshold: polling.threshold })
+    : undefined;
+
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(resolve => setTimeout(resolve, pollingInterval));
 
-    const resp = await fetchWithTimeout(checkUrl, {
-      headers: { "X-API-Key": apiKey }
-    }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
+    // Use retry for each polling request
+    const data = await withRetry(
+      async () => {
+        const resp = await fetchWithTimeout(checkUrl, {
+          headers: { "X-API-Key": apiKey }
+        }, DEFAULT_LIMITS.REQUEST_TIMEOUT);
 
-    if (!resp.ok) throw new Error(`Polling failed: ${resp.status}`);
+        if (!resp.ok) {
+          throw new Error(`Polling failed: ${resp.status}`);
+        }
 
-    const data = await resp.json();
+        return resp.json();
+      },
+      {
+        maxRetries: polling?.maxRetries ?? 0,
+        retryDelay: polling?.retryDelay ?? 1000,
+        useExponentialBackoff: polling?.useExponentialBackoff ?? true,
+        circuitBreaker,
+      }
+    );
 
     if (data.status === 'complete' || data.status === 'completed') {
       return data;

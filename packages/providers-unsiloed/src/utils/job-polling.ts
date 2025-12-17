@@ -3,6 +3,7 @@
  */
 
 import { unsiloedFetch } from './api-client.js';
+import { withRetry, createCircuitBreaker, type RetryConfig, type CircuitBreakerConfig } from '@doclo/core';
 
 export interface JobStatus {
   job_id: string;
@@ -14,7 +15,7 @@ export interface JobStatus {
   [key: string]: any;
 }
 
-export interface PollOptions {
+export interface PollOptions extends RetryConfig, CircuitBreakerConfig {
   apiKey: string;
   endpoint?: string;
   maxAttempts?: number;
@@ -32,20 +33,34 @@ export async function pollJobUntilComplete(
   const maxAttempts = options.maxAttempts || 150; // 5 minutes at 2s intervals
   const pollInterval = options.pollInterval || 2000; // 2 seconds
 
+  // Get circuit breaker if configured
+  const circuitBreaker = options.threshold !== undefined
+    ? createCircuitBreaker('unsiloed:polling', { threshold: options.threshold })
+    : undefined;
+
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     // Wait before checking (except on first attempt)
     if (attempt > 0) {
       await new Promise((resolve) => setTimeout(resolve, pollInterval));
     }
 
-    // Check job status
-    const response = await unsiloedFetch(statusPath, {
-      method: 'GET',
-      apiKey: options.apiKey,
-      endpoint: options.endpoint,
-    });
-
-    const status: JobStatus = await response.json();
+    // Check job status with retry logic
+    const status: JobStatus = await withRetry(
+      async () => {
+        const response = await unsiloedFetch(statusPath, {
+          method: 'GET',
+          apiKey: options.apiKey,
+          endpoint: options.endpoint,
+        });
+        return response.json() as Promise<JobStatus>;
+      },
+      {
+        maxRetries: options.maxRetries ?? 0,
+        retryDelay: options.retryDelay ?? 1000,
+        useExponentialBackoff: options.useExponentialBackoff ?? true,
+        circuitBreaker,
+      }
+    );
 
     // Debug logging
     if (process.env.DEBUG_PROVIDERS) {
@@ -84,11 +99,25 @@ export async function getJobResult(
   jobId: string,
   options: PollOptions
 ): Promise<any> {
-  const response = await unsiloedFetch(`/jobs/${jobId}/result`, {
-    method: 'GET',
-    apiKey: options.apiKey,
-    endpoint: options.endpoint,
-  });
+  // Get circuit breaker if configured
+  const circuitBreaker = options.threshold !== undefined
+    ? createCircuitBreaker('unsiloed:getJobResult', { threshold: options.threshold })
+    : undefined;
 
-  return response.json();
+  return withRetry(
+    async () => {
+      const response = await unsiloedFetch(`/jobs/${jobId}/result`, {
+        method: 'GET',
+        apiKey: options.apiKey,
+        endpoint: options.endpoint,
+      });
+      return response.json();
+    },
+    {
+      maxRetries: options.maxRetries ?? 0,
+      retryDelay: options.retryDelay ?? 1000,
+      useExponentialBackoff: options.useExponentialBackoff ?? true,
+      circuitBreaker,
+    }
+  );
 }

@@ -518,6 +518,12 @@ export type ParseNodeConfig = {
     exclude?: boolean;
     enabled?: boolean;
   };
+
+  /**
+   * Maximum tokens for the LLM response.
+   * If not specified, the provider's default will be used (typically 4096).
+   */
+  maxTokens?: number;
 };
 
 export type SplitNodeConfig = {
@@ -544,6 +550,12 @@ export type SplitNodeConfig = {
     exclude?: boolean;
     enabled?: boolean;
   };
+
+  /**
+   * Maximum tokens for the LLM response.
+   * If not specified, the provider's default will be used (typically 4096).
+   */
+  maxTokens?: number;
 };
 
 export type CategorizeNodeConfig = {
@@ -598,6 +610,12 @@ export type CategorizeNodeConfig = {
     exclude?: boolean;
     enabled?: boolean;
   };
+
+  /**
+   * Maximum tokens for the LLM response.
+   * If not specified, the provider's default will be used (typically 4096).
+   */
+  maxTokens?: number;
 };
 
 /**
@@ -683,6 +701,12 @@ export type ExtractNodeConfig<T = any> = {
    * @default true
    */
   preferVisual?: boolean;
+
+  /**
+   * Maximum tokens for the LLM response.
+   * If not specified, the provider's default will be used (typically 4096).
+   */
+  maxTokens?: number;
 };
 
 /** Chunk output structure */

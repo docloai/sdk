@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-datalab",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Datalab OCR provider integration for document text extraction",
   "license": "MIT",
   "repository": {

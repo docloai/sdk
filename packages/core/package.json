@@ -1,6 +1,6 @@
 {
   "name": "@doclo/core",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "Core types, utilities, and security features for the Doclo SDK",
   "license": "MIT",
   "repository": {

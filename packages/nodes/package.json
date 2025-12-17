@@ -1,6 +1,6 @@
 {
   "name": "@doclo/nodes",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Processing nodes for document extraction and transformation",
   "license": "MIT",
   "repository": {

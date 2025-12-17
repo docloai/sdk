@@ -1362,7 +1362,8 @@ export function parse(config: ParseNodeConfig) {
             pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
           },
           schema,
-          reasoning: config.reasoning
+          reasoning: config.reasoning,
+          max_tokens: config.maxTokens
         });
 
         // Handle response based on format
@@ -1685,7 +1686,8 @@ export function split(config: SplitNodeConfig) {
           pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
         },
         schema,
-        reasoning: config.reasoning
+        reasoning: config.reasoning,
+        max_tokens: config.maxTokens
       });
 
       const splitResult = result.json as { documents: Array<{ type: string; pages: number[] }> };
@@ -1889,7 +1891,8 @@ export function categorize(config: CategorizeNodeConfig) {
         result = await config.provider.completeJson({
           prompt,
           schema,
-          reasoning: config.reasoning
+          reasoning: config.reasoning,
+          max_tokens: config.maxTokens
         });
       } else {
         // FlowInput - needs VLM
@@ -1979,7 +1982,8 @@ export function categorize(config: CategorizeNodeConfig) {
               pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
             },
             schema,
-            reasoning: config.reasoning
+            reasoning: config.reasoning,
+            max_tokens: config.maxTokens
           });
           console.log('[DEBUG] categorize (FlowInput): provider returned result:', JSON.stringify(result, null, 2).substring(0, 500));
         } catch (providerErr: any) {
@@ -2789,7 +2793,8 @@ Extract the structured data now:`;
       const result = await (config.provider as any).completeJson({
         prompt: preparedPrompt,
         schema: extractionSchema,
-        reasoning: config.reasoning
+        reasoning: config.reasoning,
+        max_tokens: config.maxTokens
       });
 
       // Add metrics - now this is just the provider call time!

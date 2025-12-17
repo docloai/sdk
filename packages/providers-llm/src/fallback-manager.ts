@@ -23,6 +23,10 @@ import {
   generateSpanId,
   createLogger,
 } from "@doclo/core/observability";
+import {
+  isRetryableError,
+  calculateRetryDelay
+} from "@doclo/core";
 
 export class FallbackManager {
   private config: FallbackConfig;
@@ -185,11 +189,14 @@ export class FallbackManager {
           logger.error(`${providerKey} attempt ${attempt} failed`, lastError, { providerKey, attempt });
 
           // Check if retryable
-          if (!this.isRetryable(lastError) || attempt === maxRetriesForProvider) {
+          if (!isRetryableError(lastError) || attempt === maxRetriesForProvider) {
             break;
           }
 
-          const retryDelay = this.calculateDelay(attempt);
+          const retryDelay = calculateRetryDelay(attempt, {
+            retryDelay: this.config.retryDelay,
+            useExponentialBackoff: this.config.useExponentialBackoff,
+          });
 
           // onProviderRetry hook
           if (observability?.config && observability.traceContext && observability.executionId) {
@@ -245,31 +252,6 @@ export class FallbackManager {
     // Empty objects are valid - the schema determines if they're acceptable
     // Models may return {} when no data matches the extraction criteria
     return true;
-  }
-
-  private isRetryable(error: Error): boolean {
-    const message = error.message.toLowerCase();
-
-    // Retryable status codes
-    const retryablePatterns = [
-      '408', '429', '500', '502', '503', '504',
-      'timeout', 'rate limit', 'overloaded'
-    ];
-
-    return retryablePatterns.some(pattern =>
-      message.includes(pattern)
-    );
-  }
-
-  private calculateDelay(attempt: number): number {
-    if (!this.config.useExponentialBackoff) {
-      return this.config.retryDelay;
-    }
-
-    // Exponential backoff: baseDelay * (2 ^ attempt) + jitter
-    const exponentialDelay = this.config.retryDelay * Math.pow(2, attempt - 1);
-    const jitter = Math.random() * 1000;  // 0-1000ms jitter
-    return Math.min(exponentialDelay + jitter, 30000);  // Max 30s
   }
 
   private sleep(ms: number): Promise<void> {
