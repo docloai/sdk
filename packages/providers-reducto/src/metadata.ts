@@ -9,6 +9,7 @@
  */
 
 import { USD_PER_CREDIT, REDUCTO_CREDIT_RATES } from "./types.js";
+import type { FeatureStatus } from '@doclo/core';
 
 // ============================================================================
 // Supported MIME Types
@@ -98,20 +99,31 @@ export const FILE_EXTENSIONS: Record<string, string> = {
 // ============================================================================
 
 /**
- * Supported options for a Reducto provider
+ * Supported options for a Reducto provider.
+ * Uses FeatureStatus to indicate:
+ * - `true`: Natively supported by the API
+ * - `false`: Not supported
+ * - `'deprecated'`: API deprecated this feature
+ * - `'derived'`: SDK provides via transformation (e.g., maxPages from pageRange)
  */
 export type ReductoSupportedOptions = {
-  mode: boolean;              // Agentic mode (quality boost)
-  maxPages: boolean;          // Limit pages
-  pageRange: boolean;         // Specific page range
-  langs: boolean;             // Language hints (NOT supported)
-  extractImages: boolean;     // Return images for figures/tables
-  segmentation: boolean;      // Split endpoint
-  citations: boolean;         // Field-level citations
-  additionalPrompt: boolean;  // System prompt
-  chunking: boolean;          // Chunking modes
-  tableOutputFormat: boolean; // Table format
-  confidence: boolean;        // Block confidence scores
+  mode: FeatureStatus;              // Agentic mode (quality boost)
+  maxPages: FeatureStatus;          // SDK-derived from pageRange (1-indexed)
+  pageRange: FeatureStatus;         // Native page range support (1-indexed)
+  langs: FeatureStatus;             // Language hints (NOT supported)
+  extractImages: FeatureStatus;     // Return images for figures/tables
+  segmentation: FeatureStatus;      // Split endpoint
+  citations: FeatureStatus;         // Field-level citations
+  additionalPrompt: FeatureStatus;  // System prompt
+  chunking: FeatureStatus;          // Chunking modes
+  tableOutputFormat: FeatureStatus; // Table format
+  confidence: FeatureStatus;        // Block confidence scores
+  ocrSystem: FeatureStatus;         // OCR system selection (standard/legacy)
+  signatureExtraction: FeatureStatus;   // NOT supported - formatting.include doesn't accept "signatures"
+  commentExtraction: FeatureStatus;     // formatting.include: ["comments"]
+  highlightExtraction: FeatureStatus;   // formatting.include: ["highlight"]
+  figureSummaries: FeatureStatus;       // enhance.summarize_figures
+  chartUnderstanding: FeatureStatus;    // enhance.agentic[].advanced_chart_agent
 };
 
 // ============================================================================
@@ -263,8 +275,8 @@ export const PROVIDER_METADATA = {
     },
     supportedOptions: {
       mode: true,               // Agentic mode
-      maxPages: true,
-      pageRange: true,
+      maxPages: 'derived',      // SDK-derived from pageRange (1-indexed)
+      pageRange: true,          // Native API support (1-indexed)
       langs: false,             // Not supported by Reducto
       extractImages: true,      // return_images
       segmentation: false,      // Use Split endpoint instead
@@ -273,6 +285,12 @@ export const PROVIDER_METADATA = {
       chunking: true,           // RAG chunking modes
       tableOutputFormat: true,  // html/json/md/csv
       confidence: true,         // Block-level confidence
+      ocrSystem: true,          // ocr_system: standard/legacy
+      signatureExtraction: false,  // NOT supported - formatting.include only accepts: change_tracking, highlight, comments, hyperlinks
+      commentExtraction: true,      // formatting.include: ["comments"]
+      highlightExtraction: true,    // formatting.include: ["highlight"]
+      figureSummaries: true,        // enhance.summarize_figures
+      chartUnderstanding: true,     // enhance.agentic[].advanced_chart_agent
     },
   },
 
@@ -338,8 +356,8 @@ export const PROVIDER_METADATA = {
     },
     supportedOptions: {
       mode: true,               // Agentic mode
-      maxPages: true,
-      pageRange: true,
+      maxPages: 'derived',      // SDK-derived from pageRange (1-indexed)
+      pageRange: true,          // Native API support (1-indexed)
       langs: false,
       extractImages: false,
       segmentation: false,
@@ -348,6 +366,12 @@ export const PROVIDER_METADATA = {
       chunking: false,
       tableOutputFormat: false,
       confidence: false,
+      ocrSystem: false,         // Not applicable for extraction
+      signatureExtraction: false,  // NOT supported - formatting.include only accepts: change_tracking, highlight, comments, hyperlinks
+      commentExtraction: true,      // formatting.include: ["comments"]
+      highlightExtraction: true,    // formatting.include: ["highlight"]
+      figureSummaries: false,       // Not applicable for extraction
+      chartUnderstanding: false,    // Not applicable for extraction
     },
   },
 
@@ -425,6 +449,12 @@ export const PROVIDER_METADATA = {
       chunking: false,
       tableOutputFormat: false,
       confidence: true,
+      ocrSystem: false,
+      signatureExtraction: false,   // Not applicable for splitting
+      commentExtraction: false,     // Not applicable for splitting
+      highlightExtraction: false,   // Not applicable for splitting
+      figureSummaries: false,       // Not applicable for splitting
+      chartUnderstanding: false,    // Not applicable for splitting
     },
   },
 } as const satisfies Record<string, ReductoProviderMetadata>;

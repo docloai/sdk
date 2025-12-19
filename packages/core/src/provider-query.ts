@@ -71,6 +71,27 @@ export type OutputFormatSupport = {
 };
 
 /**
+ * Feature status values for normalized features.
+ * - `true`: Natively supported by the API
+ * - `false`: Not supported
+ * - `'deprecated'`: API deprecated this feature, may not work
+ * - `'derived'`: SDK provides via transformation (e.g., maxPages from pageRange)
+ */
+export type FeatureStatus = true | false | 'deprecated' | 'derived';
+
+/**
+ * Helper to check if a feature is enabled (true, deprecated, or derived)
+ */
+export function isFeatureEnabled(status: FeatureStatus): boolean {
+  return status === true || status === 'deprecated' || status === 'derived';
+}
+
+/**
+ * Page indexing convention used by provider
+ */
+export type PageIndexing = '0-indexed' | '1-indexed';
+
+/**
  * Normalized features across all providers.
  * Maps provider-specific option names to unified names.
  *
@@ -80,59 +101,93 @@ export type OutputFormatSupport = {
 export type NormalizedFeatures = {
   // === Page Selection ===
   /** Limit to first N pages */
-  maxPages: boolean;
+  maxPages: FeatureStatus;
   /** Specific page range selection */
-  pageRange: boolean;
+  pageRange: FeatureStatus;
 
   // === Language ===
   /** OCR language hints (maps from 'langs') */
-  languageHints: boolean;
+  languageHints: FeatureStatus;
 
   // === Processing Mode ===
   /** Quality/speed modes (fast/balanced/high_accuracy) */
-  processingModes: boolean;
+  processingModes: FeatureStatus;
   /** Reducto agentic mode (higher accuracy, more cost) */
-  agenticMode: boolean;
+  agenticMode: FeatureStatus;
 
   // === Content Enhancement ===
   /** Custom prompts (maps from blockCorrectionPrompt, additionalPrompt, systemPrompt) */
-  customPrompts: boolean;
+  customPrompts: FeatureStatus;
 
   // === Output Features ===
   /** Extract embedded images (maps from extractImages, returnImages) */
-  imageExtraction: boolean;
+  imageExtraction: FeatureStatus;
   /** Page delimiters (maps from paginate, addPageMarkers) */
-  pageMarkers: boolean;
-  /** Field-level citations with source references */
-  citations: boolean;
+  pageMarkers: FeatureStatus;
+  /** Field-level citations with source references (page/char/block indices) */
+  citations: FeatureStatus;
   /** Document chunking modes (RAG-optimized) */
-  chunking: boolean;
+  chunking: FeatureStatus;
   /** Auto-segmentation for multi-document PDFs */
-  segmentation: boolean;
+  segmentation: FeatureStatus;
 
   // === OCR-Specific ===
   /** Re-run OCR on already-OCR'd documents */
-  stripExistingOCR: boolean;
+  stripExistingOCR: FeatureStatus;
   /** Format lines in output */
-  formatLines: boolean;
+  formatLines: FeatureStatus;
   /** Force OCR even if text layer exists */
-  forceOCR: boolean;
+  forceOCR: FeatureStatus;
 
   // === Table Handling ===
   /** Table format options (html/json/md/csv) */
-  tableOutputFormats: boolean;
+  tableOutputFormats: FeatureStatus;
   /** Merge consecutive tables */
-  tableMerging: boolean;
+  tableMerging: FeatureStatus;
 
   // === Quality/Accuracy ===
   /** Block-level confidence scores */
-  confidence: boolean;
-  /** Bounding box coordinates for text/elements */
-  boundingBoxes: boolean;
+  confidence: FeatureStatus;
+  /** Bounding box coordinates for TEXT elements (pixel/normalized coords) */
+  boundingBoxes: FeatureStatus;
+  /** Bounding box coordinates for IMAGES/FIGURES only (not text) */
+  imageBoundingBoxes: FeatureStatus;
   /** JSON schema validation for structured output */
-  schemaValidation: boolean;
+  schemaValidation: FeatureStatus;
   /** Handwritten text recognition support */
-  handwrittenText: boolean;
+  handwrittenText: FeatureStatus;
+  /** Separate header/footer extraction from main content */
+  headerFooterExtraction: FeatureStatus;
+
+  // === NEW: Extended Features ===
+  /** Optimize output for embeddings/RAG */
+  embedOptimized: FeatureStatus;
+  /** Handle encrypted/password-protected PDFs */
+  passwordProtected: FeatureStatus;
+  /** Filter block types (headers, footers, page numbers, etc.) */
+  contentFiltering: FeatureStatus;
+  /** OCR system/mode selection (standard/legacy, auto/full) */
+  ocrMode: FeatureStatus;
+  /** Async completion webhook callbacks */
+  webhookCallback: FeatureStatus;
+  /** Vision quality control (low/medium/high) - Gemini */
+  mediaResolution: FeatureStatus;
+  /** Track changes extraction from Word docs */
+  changeTracking: FeatureStatus;
+  /** Extract hyperlinks from documents */
+  hyperlinkExtraction: FeatureStatus;
+  /** Enhanced chart and graph interpretation (Datalab extras=chart_understanding) */
+  chartUnderstanding: FeatureStatus;
+  /** Control image caption generation (Datalab disable_image_captions) */
+  imageCaptions: FeatureStatus;
+  /** Extract signatures from documents (Reducto include: ["signatures"]) */
+  signatureExtraction: FeatureStatus;
+  /** Extract comments/annotations from documents (Reducto include: ["comments"]) */
+  commentExtraction: FeatureStatus;
+  /** Extract highlighted text from documents (Reducto include: ["highlight"]) */
+  highlightExtraction: FeatureStatus;
+  /** Summarize figures/charts with VLM (Reducto summarize_figures) */
+  figureSummaries: FeatureStatus;
 
   // === Output Formats ===
   /** Supported output formats */
@@ -458,9 +513,10 @@ export function queryProviders(filter: ProviderQueryFilter = {}): NormalizedProv
   }
 
   // NEW: Filter by specific features (all must be supported)
+  // Uses isFeatureEnabled() to treat 'deprecated' and 'derived' as truthy
   if (filter.hasFeatures && filter.hasFeatures.length > 0) {
     providers = providers.filter(p =>
-      filter.hasFeatures!.every(feature => p.features[feature] === true)
+      filter.hasFeatures!.every(feature => isFeatureEnabled(p.features[feature]))
     );
   }
 
@@ -573,6 +629,8 @@ function defaultNormalizer(id: string, data: unknown, source: string): Normalize
     return normalizeReductoProvider(id, d);
   } else if (source === 'unsiloed') {
     return normalizeUnsiloedProvider(id, d);
+  } else if (source === 'mistral') {
+    return normalizeMistralProvider(id, d);
   }
 
   // Generic fallback
@@ -596,8 +654,25 @@ function defaultNormalizer(id: string, data: unknown, source: string): Normalize
     tableMerging: false,
     confidence: false,
     boundingBoxes: false,
+    imageBoundingBoxes: false,
     schemaValidation: false,
     handwrittenText: false,
+    headerFooterExtraction: false,
+    // Extended features
+    embedOptimized: false,
+    passwordProtected: false,
+    contentFiltering: false,
+    ocrMode: false,
+    webhookCallback: false,
+    mediaResolution: false,
+    changeTracking: false,
+    hyperlinkExtraction: false,
+    chartUnderstanding: false,
+    imageCaptions: false,
+    signatureExtraction: false,
+    commentExtraction: false,
+    highlightExtraction: false,
+    figureSummaries: false,
     outputFormats: defaultOutputFormats,
   };
 
@@ -656,17 +731,22 @@ function normalizeLLMProvider(id: string, d: Record<string, any>): NormalizedPro
     json: d.capabilities?.supportsStructuredOutput ?? true,
   };
 
+  // Extract vendor from id or default to id
+  const vendor = d.vendor ?? id;
+
   // LLM features - all LLMs support prompts and flexible output
+  // LLMs don't have native pageRange support - they receive full document
+  // maxPages can be 'derived' if SDK pre-processes pages before sending
   const features: NormalizedFeatures = {
-    maxPages: d.inputFormats?.pdfs?.maxPages !== undefined,
-    pageRange: true,  // LLMs can handle page ranges
+    maxPages: 'derived' as FeatureStatus,  // SDK can limit via pre-processing
+    pageRange: false,  // No native API support - LLMs receive full text
     languageHints: false,  // Not applicable to LLMs
     processingModes: false,  // Not applicable to LLMs
     agenticMode: false,  // Not applicable to LLMs
     customPrompts: true,  // All LLMs support prompts
     imageExtraction: false,  // LLMs don't extract images
     pageMarkers: false,  // LLMs don't add page markers
-    citations: false,  // Most LLMs don't have native citations (Anthropic has different API)
+    citations: vendor === 'anthropic' ? true : false,  // Anthropic has Citations API
     chunking: false,  // LLMs don't do chunking
     segmentation: false,  // LLMs don't do segmentation
     stripExistingOCR: false,
@@ -676,13 +756,27 @@ function normalizeLLMProvider(id: string, d: Record<string, any>): NormalizedPro
     tableMerging: false,
     confidence: false,  // LLMs don't provide confidence scores
     boundingBoxes: false,  // LLMs don't provide bounding boxes
+    imageBoundingBoxes: false,  // LLMs don't provide image bounding boxes (Gemini 2.0+ can via specific prompting, but not a simple toggle)
     schemaValidation: d.capabilities?.supportsStructuredOutput ?? false,  // Some LLMs support schema validation
     handwrittenText: false,  // Not specific to LLMs
+    headerFooterExtraction: false,  // LLMs don't extract header/footer separately
+    // Extended features
+    embedOptimized: false,
+    passwordProtected: false,
+    contentFiltering: false,
+    ocrMode: false,
+    webhookCallback: false,
+    mediaResolution: vendor === 'google' ? true : false,  // Google Gemini has mediaResolution
+    changeTracking: false,
+    hyperlinkExtraction: false,
+    chartUnderstanding: false,
+    imageCaptions: false,
+    signatureExtraction: false,
+    commentExtraction: false,
+    highlightExtraction: false,
+    figureSummaries: false,
     outputFormats,
   };
-
-  // Extract vendor from id or default to id
-  const vendor = d.vendor ?? id;
 
   return {
     id,
@@ -703,7 +797,7 @@ function normalizeLLMProvider(id: string, d: Record<string, any>): NormalizedPro
       supportsStructuredOutput: d.capabilities?.supportsStructuredOutput ?? false,
       // NEW capabilities
       supportsPrompts: true,
-      supportsCitations: false,
+      supportsCitations: vendor === 'anthropic',  // Anthropic has Citations API
       supportsChunking: false,
       supportsImageExtraction: false,
       supportsPageMarkers: false,
@@ -750,6 +844,8 @@ function normalizeLLMProvider(id: string, d: Record<string, any>): NormalizedPro
 function normalizeDatalabProvider(id: string, d: Record<string, any>): NormalizedProviderMetadata {
   const opts = d.supportedOptions ?? {};
   const isVLM = d.type === 'VLM';
+  const isMarkerOCR = id === 'marker-ocr' || id.includes('marker-ocr');
+  const isMarkerVLM = id === 'marker-vlm' || id.includes('marker-vlm');
 
   // Extract model from the provider/model format or use id
   const model = d.model ?? id;
@@ -763,27 +859,45 @@ function normalizeDatalabProvider(id: string, d: Record<string, any>): Normalize
   };
 
   // Map Datalab supportedOptions to normalized features
+  // Mark deprecated features based on Datalab API docs
   const features: NormalizedFeatures = {
     maxPages: opts.maxPages ?? false,
     pageRange: opts.pageRange ?? false,
-    languageHints: opts.langs ?? false,  // maps from 'langs'
+    languageHints: opts.langs ? 'deprecated' as FeatureStatus : false,  // API ignores, handled automatically
     processingModes: opts.mode ?? false,
     agenticMode: false,  // Datalab doesn't have agentic mode
-    customPrompts: opts.blockCorrectionPrompt ?? false,
+    customPrompts: opts.blockCorrectionPrompt ? 'deprecated' as FeatureStatus : false,  // Not currently supported
     imageExtraction: opts.extractImages ?? false,
     pageMarkers: opts.paginate ?? false,  // maps from 'paginate'
-    citations: opts.citations ?? false,
+    citations: isMarkerVLM ? true : false,  // Marker VLM has citations
     chunking: false,  // Datalab doesn't have chunking
     segmentation: opts.segmentation ?? false,
-    stripExistingOCR: opts.stripExistingOCR ?? false,
-    formatLines: opts.formatLines ?? false,
-    forceOCR: true,  // Datalab supports force_ocr
+    stripExistingOCR: opts.stripExistingOCR ? 'deprecated' as FeatureStatus : false,  // Managed automatically
+    formatLines: opts.formatLines ? 'deprecated' as FeatureStatus : false,  // Handled automatically
+    forceOCR: 'deprecated' as FeatureStatus,  // DEPRECATED: force_ocr param has no effect per API docs
     tableOutputFormats: false,
     tableMerging: false,
     confidence: false,  // Datalab doesn't provide confidence scores
-    boundingBoxes: d.outputFormat?.features?.boundingBoxes ?? true,  // Datalab provides bounding boxes
+    boundingBoxes: d.outputFormat?.features?.boundingBoxes ?? true,  // Datalab Surya provides text bboxes
+    imageBoundingBoxes: isMarkerOCR || isMarkerVLM ? true : false,  // Marker extracts images with bboxes
     schemaValidation: isVLM,  // VLM providers support schema validation
     handwrittenText: true,  // Datalab handles handwritten text
+    headerFooterExtraction: false,  // Datalab has issues with header/footer extraction
+    // Extended features
+    embedOptimized: false,
+    passwordProtected: false,
+    contentFiltering: false,
+    ocrMode: false,
+    webhookCallback: true,  // Datalab supports webhook callbacks
+    mediaResolution: false,
+    changeTracking: true,  // Datalab marker_extras supports track_changes
+    hyperlinkExtraction: isMarkerOCR || isMarkerVLM,  // Datalab extras=extract_links
+    chartUnderstanding: isMarkerOCR || isMarkerVLM,  // Datalab extras=chart_understanding
+    imageCaptions: isMarkerOCR || isMarkerVLM,  // Datalab disable_image_captions param
+    signatureExtraction: false,
+    commentExtraction: false,
+    highlightExtraction: false,
+    figureSummaries: false,
     outputFormats,
   };
 
@@ -852,6 +966,7 @@ function normalizeReductoProvider(id: string, d: Record<string, any>): Normalize
   const opts = d.supportedOptions ?? {};
   const isVLM = d.type === 'VLM';
   const isExtract = d.compatibleNodes?.extract === true;
+  const isParse = d.compatibleNodes?.parse === true;
 
   // Extract model from metadata or default to 'v1'
   const model = d.model ?? 'v1';
@@ -865,10 +980,11 @@ function normalizeReductoProvider(id: string, d: Record<string, any>): Normalize
   };
 
   // Map Reducto supportedOptions to normalized features
+  // Reducto doesn't have native maxPages, only pageRange - mark maxPages as derived
   const features: NormalizedFeatures = {
-    maxPages: opts.maxPages ?? false,
+    maxPages: (opts.pageRange ?? false) ? 'derived' as FeatureStatus : false,  // SDK derives from pageRange (1-indexed)
     pageRange: opts.pageRange ?? false,
-    languageHints: opts.langs ?? false,  // Reducto doesn't support langs
+    languageHints: false,  // Reducto doesn't support language hints
     processingModes: false,  // Reducto uses agentic instead
     agenticMode: opts.mode ?? false,  // maps from 'mode' (agentic)
     customPrompts: opts.additionalPrompt ?? false,  // maps from 'additionalPrompt'
@@ -883,9 +999,26 @@ function normalizeReductoProvider(id: string, d: Record<string, any>): Normalize
     tableOutputFormats: opts.tableOutputFormat ?? false,
     tableMerging: d.compatibleNodes?.parse ?? false,  // Parse has mergeTables
     confidence: opts.confidence ?? d.outputFormat?.features?.confidence ?? false,  // Reducto Parse has confidence
-    boundingBoxes: d.outputFormat?.features?.boundingBoxes ?? d.compatibleNodes?.parse ?? false,  // Reducto Parse has bounding boxes
+    boundingBoxes: d.outputFormat?.features?.boundingBoxes ?? isParse,  // Reducto Parse has text bounding boxes
+    imageBoundingBoxes: isParse ? true : false,  // Reducto Parse has figure bounding boxes
     schemaValidation: d.outputFormat?.features?.schemaValidation ?? isExtract,  // Extract has schema validation
     handwrittenText: false,  // Reducto doesn't specifically advertise handwriting
+    headerFooterExtraction: true,  // Reducto has Header/Footer block types
+    // Extended features
+    embedOptimized: isParse,  // Reducto Parse supports retrieval.embedding_optimized: true
+    passwordProtected: true,  // Reducto handles encrypted PDFs
+    contentFiltering: true,  // Reducto can filter block types
+    ocrMode: opts.ocrSystem ?? false,  // Reducto has ocr_system selection
+    webhookCallback: true,  // Reducto supports webhook callbacks
+    mediaResolution: false,
+    changeTracking: true,  // Reducto tracks changes in Word docs
+    hyperlinkExtraction: true,  // Reducto extracts hyperlinks via formatting.include
+    chartUnderstanding: isParse,  // Reducto enhance.agentic[].advanced_chart_agent for figures
+    imageCaptions: false,  // Not available in Reducto
+    signatureExtraction: false,  // NOT supported - formatting.include only accepts: change_tracking, highlight, comments, hyperlinks
+    commentExtraction: isParse || isExtract,  // Reducto formatting.include: ["comments"]
+    highlightExtraction: isParse || isExtract,  // Reducto formatting.include: ["highlight"]
+    figureSummaries: isParse,  // Reducto enhance.summarize_figures
     outputFormats,
   };
 
@@ -974,7 +1107,7 @@ function normalizeUnsiloedProvider(id: string, d: Record<string, any>): Normaliz
     maxPages: false,  // Unsiloed doesn't have max pages option
     pageRange: false,  // Unsiloed doesn't have page range option
     languageHints: false,  // Unsiloed doesn't support language hints
-    processingModes: d.capabilities?.specialFeatures?.includes('YOLO segmentation') ?? false,
+    processingModes: false,  // Unsiloed doesn't have fast/balanced/high_accuracy modes like Datalab
     agenticMode: false,  // Unsiloed doesn't have agentic mode
     customPrompts: false,  // Unsiloed doesn't support custom prompts
     imageExtraction: false,  // Unsiloed doesn't extract images
@@ -988,9 +1121,26 @@ function normalizeUnsiloedProvider(id: string, d: Record<string, any>): Normaliz
     tableOutputFormats: false,
     tableMerging: false,
     confidence: d.outputFormat?.features?.confidence ?? false,  // Unsiloed may provide confidence
-    boundingBoxes: d.outputFormat?.features?.boundingBoxes ?? false,  // Unsiloed may provide bounding boxes
+    boundingBoxes: d.outputFormat?.features?.boundingBoxes ?? isParse,  // Unsiloed Parse has bounding boxes
+    imageBoundingBoxes: false,  // Unsiloed doesn't return image-specific bboxes
     schemaValidation: isExtract,  // Extract supports schema validation
-    handwrittenText: false,  // Unsiloed doesn't specifically advertise handwriting
+    handwrittenText: d.capabilities?.specialFeatures?.includes('handwritten text') ?? false,  // Parse supports handwriting
+    headerFooterExtraction: false,  // Unsiloed doesn't extract header/footer separately
+    // Extended features
+    embedOptimized: false,
+    passwordProtected: false,
+    contentFiltering: isParse,  // Parse supports keep_segment_types: ["table", "picture", "formula", "text"]
+    ocrMode: isParse,  // Parse endpoint supports ocr_mode: 'auto_ocr' | 'full_ocr'
+    webhookCallback: false,  // Unsiloed is synchronous
+    mediaResolution: false,
+    changeTracking: false,
+    hyperlinkExtraction: false,
+    chartUnderstanding: false,  // Not available in Unsiloed
+    imageCaptions: false,  // Not available in Unsiloed
+    signatureExtraction: false,  // Not available in Unsiloed
+    commentExtraction: false,  // Not available in Unsiloed
+    highlightExtraction: false,  // Not available in Unsiloed
+    figureSummaries: false,  // Not available in Unsiloed
     outputFormats,
   };
 
@@ -1018,7 +1168,7 @@ function normalizeUnsiloedProvider(id: string, d: Record<string, any>): Normaliz
       supportsImageExtraction: false,
       supportsPageMarkers: false,
       supportsLanguageHints: false,
-      supportsProcessingModes: d.capabilities?.specialFeatures?.includes('YOLO segmentation') ?? false,
+      supportsProcessingModes: false,  // Unsiloed doesn't have fast/balanced/high_accuracy modes
       supportsSegmentation: isSplit || isCategorize,
       outputFormats,
     },
@@ -1505,9 +1655,10 @@ function matchesModelFilter(model: ResolvedModelMetadata, filter: ModelQueryFilt
   }
 
   // Check specific features (all must be supported)
+  // Uses isFeatureEnabled() to treat 'deprecated' and 'derived' as truthy
   if (filter.hasFeatures && filter.hasFeatures.length > 0) {
     for (const feature of filter.hasFeatures) {
-      if (model.features[feature] !== true) {
+      if (!isFeatureEnabled(model.features[feature])) {
         return false;
       }
     }
@@ -1680,4 +1831,247 @@ export function getAllProviderVendors(): string[] {
     }
   }
   return [...vendors];
+}
+
+// ============================================================================
+// Derived Feature Transformation Utilities
+// ============================================================================
+
+/**
+ * Page indexing convention by provider source.
+ * Used when converting maxPages to pageRange.
+ */
+const PAGE_INDEXING: Record<string, PageIndexing> = {
+  datalab: '0-indexed',
+  reducto: '1-indexed',
+  mistral: '0-indexed',
+  unsiloed: '1-indexed',  // Default assumption
+  llm: '1-indexed',       // N/A but default
+};
+
+/**
+ * Get the page indexing convention for a provider.
+ *
+ * @param provider - Provider metadata or source string
+ * @returns Page indexing convention ('0-indexed' or '1-indexed')
+ */
+export function getPageIndexing(provider: NormalizedProviderMetadata | string): PageIndexing {
+  const source = typeof provider === 'string' ? provider : provider.source;
+  return PAGE_INDEXING[source] ?? '1-indexed';
+}
+
+/**
+ * Options that can be transformed for derived features.
+ */
+export type DerivedFeatureOptions = {
+  maxPages?: number;
+  pageRange?: string;
+};
+
+/**
+ * Result of derived feature transformation.
+ */
+export type TransformedOptions = {
+  /** The transformed page_range parameter (provider-specific format) */
+  page_range?: string;
+  /** Array format for providers that support it (e.g., Mistral) */
+  pages?: number[];
+  /** Original options minus the derived ones */
+  remainingOptions: Record<string, unknown>;
+};
+
+/**
+ * Transform maxPages to provider-specific pageRange format.
+ *
+ * This utility handles the conversion when a provider has `maxPages: 'derived'`,
+ * meaning the SDK provides maxPages functionality via the underlying pageRange API.
+ *
+ * @param options - User-provided options including maxPages
+ * @param provider - Provider metadata to determine format
+ * @returns Transformed options with provider-specific pageRange
+ *
+ * @example
+ * ```typescript
+ * // User wants first 5 pages from Reducto (1-indexed)
+ * const result = transformDerivedFeatures({ maxPages: 5 }, reductoProvider);
+ * // => { page_range: '1-5', remainingOptions: {} }
+ *
+ * // User wants first 5 pages from Datalab (0-indexed)
+ * const result = transformDerivedFeatures({ maxPages: 5 }, datalabProvider);
+ * // => { page_range: '0-4', remainingOptions: {} }
+ *
+ * // User wants first 5 pages from Mistral (0-indexed, array format)
+ * const result = transformDerivedFeatures({ maxPages: 5 }, mistralProvider);
+ * // => { page_range: '0-4', pages: [0,1,2,3,4], remainingOptions: {} }
+ * ```
+ */
+export function transformDerivedFeatures(
+  options: DerivedFeatureOptions & Record<string, unknown>,
+  provider: NormalizedProviderMetadata
+): TransformedOptions {
+  const { maxPages, pageRange, ...remainingOptions } = options;
+  const result: TransformedOptions = { remainingOptions };
+
+  // If user provided explicit pageRange, pass it through
+  if (pageRange !== undefined) {
+    result.page_range = pageRange;
+    return result;
+  }
+
+  // If maxPages provided and provider has derived maxPages support
+  if (maxPages !== undefined && provider.features.maxPages === 'derived') {
+    const indexing = getPageIndexing(provider);
+
+    if (indexing === '0-indexed') {
+      // 0-indexed: first N pages = 0 to N-1
+      result.page_range = `0-${maxPages - 1}`;
+
+      // Mistral also supports array format
+      if (provider.source === 'mistral') {
+        result.pages = Array.from({ length: maxPages }, (_, i) => i);
+      }
+    } else {
+      // 1-indexed: first N pages = 1 to N
+      result.page_range = `1-${maxPages}`;
+    }
+  } else if (maxPages !== undefined && isFeatureEnabled(provider.features.maxPages)) {
+    // Provider natively supports maxPages, pass it through in remainingOptions
+    result.remainingOptions.maxPages = maxPages;
+  }
+
+  return result;
+}
+
+/**
+ * Check if a provider requires derived feature transformation for maxPages.
+ *
+ * @param provider - Provider metadata
+ * @returns true if maxPages needs to be transformed to pageRange
+ */
+export function requiresMaxPagesTransformation(provider: NormalizedProviderMetadata): boolean {
+  return provider.features.maxPages === 'derived';
+}
+
+// ============================================================================
+// Mistral Provider Normalizer
+// ============================================================================
+
+function normalizeMistralProvider(id: string, d: Record<string, any>): NormalizedProviderMetadata {
+  const opts = d.supportedOptions ?? {};
+  const isVLM = d.type === 'VLM';
+  const isOCR = d.type === 'OCR';
+
+  // Extract model from metadata
+  const model = d.model ?? id;
+
+  // Output formats based on provider type
+  const outputFormats: OutputFormatSupport = {
+    text: true,
+    markdown: d.outputFormat?.features?.markdown ?? isOCR,
+    html: d.outputFormat?.features?.htmlTables ?? isOCR,  // OCR 3 can output HTML tables
+    json: d.outputFormat?.features?.structuredJSON ?? isVLM,
+  };
+
+  // Map Mistral supportedOptions to normalized features
+  // Mistral VLM: bbox_annotation supports 1000 pages, document_annotation limited to 8 pages
+  const features: NormalizedFeatures = {
+    maxPages: d.inputFormats?.maxPages !== undefined,
+    pageRange: true,  // Mistral supports pages param: "0-5" or [0,2,5] (0-indexed)
+    languageHints: false,  // Mistral doesn't support language hints
+    processingModes: false,  // Mistral doesn't have processing modes
+    agenticMode: false,  // Mistral doesn't have agentic mode
+    customPrompts: false,  // Mistral OCR 3 doesn't support custom prompts
+    imageExtraction: opts.includeImageBase64 ?? false,  // Can include embedded images
+    pageMarkers: false,  // Mistral doesn't add page markers
+    citations: false,  // Mistral doesn't provide citations
+    chunking: false,  // Mistral doesn't do chunking
+    segmentation: false,  // Mistral doesn't do segmentation
+    stripExistingOCR: false,
+    formatLines: false,
+    forceOCR: true,  // OCR 3 always does OCR
+    tableOutputFormats: opts.tableFormat ?? isOCR,  // html or markdown table format
+    tableMerging: false,
+    confidence: false,  // Mistral doesn't provide confidence scores
+    boundingBoxes: false,  // Mistral does NOT provide text-level bounding boxes
+    imageBoundingBoxes: true,  // Mistral provides image/figure bounding boxes only
+    schemaValidation: d.outputFormat?.features?.schemaValidation ?? isVLM,  // VLM supports schema
+    handwrittenText: d.outputFormat?.features?.handwrittenText ?? true,  // Excellent handwriting support
+    headerFooterExtraction: opts.extractHeader ?? opts.extractFooter ?? false,  // extract_header/extract_footer
+    // Extended features
+    embedOptimized: false,
+    passwordProtected: false,
+    contentFiltering: false,
+    ocrMode: false,
+    webhookCallback: false,  // Mistral is synchronous
+    mediaResolution: false,
+    changeTracking: false,
+    hyperlinkExtraction: true,  // Response pages[].hyperlinks[] auto-extracted
+    chartUnderstanding: false,  // Not available as separate feature in Mistral
+    imageCaptions: false,  // Not available in Mistral
+    signatureExtraction: false,  // Not available in Mistral
+    commentExtraction: false,  // Not available in Mistral
+    highlightExtraction: false,  // Not available in Mistral
+    figureSummaries: false,  // Not available in Mistral
+    outputFormats,
+  };
+
+  return {
+    id: d.id ?? id,
+    name: d.name ?? id,
+    source: 'mistral',
+    type: d.type ?? 'OCR',
+    // 3-layer identity
+    identity: {
+      provider: 'mistral',
+      model,
+      method: 'native' as const,
+    },
+    capabilities: {
+      supportsImages: d.capabilities?.supportsImages ?? true,
+      supportsPDFs: d.capabilities?.supportsPDFs ?? true,
+      supportsDocuments: d.capabilities?.supportsDocuments ?? true,  // Supports DOCX, PPTX, TXT, EPUB, RTF, ODT, etc. (NOT XLSX)
+      supportsReasoning: false,  // OCR 3 doesn't do reasoning
+      supportsStructuredOutput: d.capabilities?.supportsStructuredOutput ?? isVLM,
+      // Extended capabilities
+      supportsPrompts: false,
+      supportsCitations: false,
+      supportsChunking: false,
+      supportsImageExtraction: opts.includeImageBase64 ?? false,
+      supportsPageMarkers: false,
+      supportsLanguageHints: false,
+      supportsProcessingModes: false,
+      supportsSegmentation: false,
+      outputFormats,
+    },
+    features,
+    // Mistral providers always need raw document input
+    inputRequirements: {
+      inputType: d.inputRequirements?.inputType ?? 'raw-document',
+      acceptedMethods: d.inputRequirements?.acceptedMethods ?? ['base64', 'url'],
+    },
+    compatibleNodes: {
+      parse: d.compatibleNodes?.parse ?? isOCR,
+      extract: d.compatibleNodes?.extract ?? isVLM,
+      categorize: d.compatibleNodes?.categorize ?? false,
+      qualify: d.compatibleNodes?.qualify ?? false,
+      split: d.compatibleNodes?.split ?? false,
+    },
+    inputFormats: {
+      imageMimeTypes: (d.inputFormats?.mimeTypes ?? []).filter((m: string) => m.startsWith('image/')),
+      documentMimeTypes: (d.inputFormats?.mimeTypes ?? []).filter((m: string) => !m.startsWith('image/')),
+      inputMethods: d.inputFormats?.inputMethods ?? ['base64', 'url'],
+      maxFileSize: d.inputFormats?.maxFileSize ?? 50,  // 50MB limit
+      maxPages: d.inputFormats?.maxPages ?? 1000,
+    },
+    pricing: {
+      model: 'per-page',
+      perPage: d.pricing?.perPage ?? 0.002,  // $2/1000 pages
+      currency: 'USD',
+      notes: d.pricing?.notes ?? '$2 per 1000 pages',
+    },
+    rateLimits: {
+      docsPerMinute: d.apiConfig?.rateLimit?.docsPerMinute,
+    },
+    raw: d,
+  };
 }

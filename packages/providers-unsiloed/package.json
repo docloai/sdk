@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-unsiloed",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Unsiloed AI provider integration for document parsing, extraction, classification, and splitting",
   "license": "MIT",
   "repository": {

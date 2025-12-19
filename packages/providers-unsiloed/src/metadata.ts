@@ -30,14 +30,10 @@ export const PARSE_SUPPORTED_MIME_TYPES = [
   'application/vnd.openxmlformats-officedocument.presentationml.presentation', // pptx
 ] as const;
 
-// MIME types for /cite (extract) endpoint - wider format support
+// MIME types for /cite (extract) endpoint - PDF only
+// Validated: /cite endpoint only accepts PDF via pdf_file parameter, NOT images
 export const EXTRACT_SUPPORTED_MIME_TYPES = [
   'application/pdf',
-  'image/png',
-  'image/jpeg',
-  'image/tiff',
-  'image/webp', // Extract/cite supports more formats than parse
-  'image/gif',
 ] as const;
 
 // Legacy exports for backwards compatibility
@@ -150,7 +146,7 @@ export const PROVIDER_METADATA = {
     defaultEndpoint: 'https://prod.visionapi.unsiloed.ai',
     apiEndpoint: '/parse',
     capabilities: {
-      supportsImages: false, // /parse endpoint only supports PDFs (use /cite for images)
+      supportsImages: true, // /parse supports PNG, JPEG, TIFF images
       supportsPDFs: true,
       supportsDocuments: false,
       asyncProcessing: true,
@@ -159,7 +155,7 @@ export const PROVIDER_METADATA = {
     },
     inputRequirements: {
       inputType: 'raw-document',
-      acceptedMethods: ['url', 'base64']
+      acceptedMethods: ['url'] // Parse only accepts URL (file upload or URL), not base64
     },
     compatibleNodes: {
       parse: true, // ✅ OCRProvider accepted by parse()
@@ -169,8 +165,8 @@ export const PROVIDER_METADATA = {
       split: false,
     },
     inputFormats: {
-      mimeTypes: SUPPORTED_MIME_TYPES.PDF, // Parse only supports PDFs
-      inputMethods: ['url', 'base64'],
+      mimeTypes: PARSE_SUPPORTED_MIME_TYPES, // Parse supports PDF + images (PNG, JPEG, TIFF)
+      inputMethods: ['url'], // URL only - no base64 support
       maxFileSize: 100 * 1024 * 1024, // 100MB
       maxPages: undefined, // No documented limit
     },
@@ -207,7 +203,7 @@ export const PROVIDER_METADATA = {
     defaultEndpoint: 'https://prod.visionapi.unsiloed.ai',
     apiEndpoint: '/cite',
     capabilities: {
-      supportsImages: true, // API accepts images too
+      supportsImages: false, // /cite only accepts PDF via pdf_file parameter
       supportsPDFs: true,
       supportsDocuments: false,
       asyncProcessing: true,
@@ -218,7 +214,7 @@ export const PROVIDER_METADATA = {
     // Using parse() before extract(unsiloed-extract) is wasteful.
     inputRequirements: {
       inputType: 'raw-document',
-      acceptedMethods: ['url', 'base64']
+      acceptedMethods: ['base64'] // /cite only accepts file upload (base64), not URL
     },
     compatibleNodes: {
       parse: false,
@@ -228,8 +224,8 @@ export const PROVIDER_METADATA = {
       split: false,
     },
     inputFormats: {
-      mimeTypes: ALL_SUPPORTED_MIME_TYPES,
-      inputMethods: ['url', 'base64'],
+      mimeTypes: EXTRACT_SUPPORTED_MIME_TYPES, // PDF only for /cite endpoint
+      inputMethods: ['base64'], // File upload only, no URL support
       maxFileSize: 100 * 1024 * 1024,
       maxPages: undefined,
     },
@@ -347,6 +343,7 @@ export const PROVIDER_METADATA = {
       type: 'JSON',
       features: {
         structuredJSON: true,
+        confidence: true,  // API returns confidence scores for classification
       },
     },
     pricing: {

@@ -18,7 +18,8 @@ export type ProviderVendor =
   | 'openai'       // OpenAI (gpt-4.1, o3, o4-mini)
   | 'anthropic'    // Anthropic (claude-*)
   | 'google'       // Google (gemini-*)
-  | 'xai';         // xAI (grok-*)
+  | 'xai'          // xAI (grok-*)
+  | 'mistral';     // Mistral AI (ocr-3, pixtral, large, medium, small)
 
 /**
  * Access methods for providers

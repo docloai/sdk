@@ -164,6 +164,11 @@ export type {
   ProviderQueryFilter,
   ProviderInputType,
   InputRequirements,
+  // Feature status types
+  FeatureStatus,
+  PageIndexing,
+  DerivedFeatureOptions,
+  TransformedOptions,
   // Model-level types
   ModelMetadata,
   ResolvedModelMetadata,
@@ -181,6 +186,11 @@ export {
   getProvidersForMimeType,
   getCheapestProviderFor,
   getProvidersForLargeFiles,
+  // Feature status utilities
+  isFeatureEnabled,
+  getPageIndexing,
+  transformDerivedFeatures,
+  requiresMaxPagesTransformation,
   // Model-level query functions
   registerProviderWithModels,
   resolveModelMetadata,

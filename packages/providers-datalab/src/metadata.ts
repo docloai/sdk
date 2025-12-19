@@ -8,6 +8,8 @@
  * - Capabilities
  */
 
+import type { FeatureStatus } from '@doclo/core';
+
 // Supported MIME types (from Datalab documentation)
 export const SUPPORTED_MIME_TYPES = {
   // PDF
@@ -88,32 +90,46 @@ export const PROCESSING_MODES = {
 } as const;
 
 /**
- * Supported options for a Datalab provider
- * These map to our normalized types in @doclo/core
+ * Supported options for a Datalab provider.
+ * These map to our normalized types in @doclo/core.
+ *
+ * Uses FeatureStatus to indicate:
+ * - `true`: Natively supported by the API
+ * - `false`: Not supported
+ * - `'deprecated'`: API deprecated this feature, may not work
+ * - `'derived'`: SDK provides via transformation
  */
 export type DatalabSupportedOptions = {
   /** Processing mode (fast/balanced/high_accuracy) */
-  mode: boolean;
+  mode: FeatureStatus;
   /** Limit to first N pages */
-  maxPages: boolean;
+  maxPages: FeatureStatus;
   /** Specific page range (0-indexed) */
-  pageRange: boolean;
-  /** Language hints for OCR */
-  langs: boolean;
+  pageRange: FeatureStatus;
+  /** Language hints for OCR - DEPRECATED: API ignores, handled automatically */
+  langs: FeatureStatus;
   /** Extract embedded images */
-  extractImages: boolean;
+  extractImages: FeatureStatus;
   /** Auto-segmentation of multi-document PDFs */
-  segmentation: boolean;
+  segmentation: FeatureStatus;
   /** Field-level citations */
-  citations: boolean;
-  /** Additional prompt/instructions */
-  blockCorrectionPrompt: boolean;
+  citations: FeatureStatus;
+  /** Additional prompt/instructions - DEPRECATED: Not currently supported */
+  blockCorrectionPrompt: FeatureStatus;
   /** Paginate output with page delimiters */
-  paginate: boolean;
-  /** Strip existing OCR and redo */
-  stripExistingOCR: boolean;
-  /** Format lines in output */
-  formatLines: boolean;
+  paginate: FeatureStatus;
+  /** Strip existing OCR and redo - DEPRECATED: Managed automatically */
+  stripExistingOCR: FeatureStatus;
+  /** Format lines in output - DEPRECATED: Handled automatically */
+  formatLines: FeatureStatus;
+  /** Force OCR even if text layer exists - DEPRECATED: No effect per API docs */
+  forceOCR: FeatureStatus;
+  /** Enhanced chart/graph interpretation (extras=chart_understanding) */
+  chartUnderstanding: FeatureStatus;
+  /** Extract hyperlinks from documents (extras=extract_links) */
+  extractLinks: FeatureStatus;
+  /** Control image caption generation (disable_image_captions) */
+  imageCaptions: FeatureStatus;
 };
 
 /**
@@ -269,7 +285,11 @@ export const PROVIDER_METADATA = {
       blockCorrectionPrompt: false,
       paginate: false,
       stripExistingOCR: false,
-      formatLines: false
+      formatLines: false,
+      forceOCR: false,          // Surya doesn't have force_ocr
+      chartUnderstanding: false, // Not available for Surya
+      extractLinks: false,       // Not available for Surya
+      imageCaptions: false       // Not available for Surya
     }
   },
 
@@ -335,15 +355,19 @@ export const PROVIDER_METADATA = {
     supportedOptions: {
       mode: true,               // ✅ fast/balanced/high_accuracy
       maxPages: true,           // ✅ max_pages parameter
-      pageRange: true,          // ✅ page_range parameter
-      langs: true,              // ✅ langs parameter
+      pageRange: true,          // ✅ page_range parameter (0-indexed)
+      langs: 'deprecated',      // ⚠️ DEPRECATED: API ignores, handled automatically
       extractImages: true,      // ✅ disable_image_extraction parameter
       segmentation: false,      // ❌ OCR only, no segmentation
       citations: false,         // ❌ OCR only, no citations
-      blockCorrectionPrompt: false, // ❌ OCR only, no LLM prompting
+      blockCorrectionPrompt: 'deprecated', // ⚠️ DEPRECATED: Not currently supported
       paginate: true,           // ✅ paginate parameter
-      stripExistingOCR: true,   // ✅ strip_existing_ocr parameter
-      formatLines: true         // ✅ format_lines parameter
+      stripExistingOCR: 'deprecated',   // ⚠️ DEPRECATED: Managed automatically
+      formatLines: 'deprecated',        // ⚠️ DEPRECATED: Handled automatically
+      forceOCR: 'deprecated',           // ⚠️ DEPRECATED: No effect per API docs
+      chartUnderstanding: true,         // ✅ extras=chart_understanding
+      extractLinks: true,               // ✅ extras=extract_links
+      imageCaptions: true               // ✅ disable_image_captions parameter
     }
   },
 
@@ -411,15 +435,19 @@ export const PROVIDER_METADATA = {
     supportedOptions: {
       mode: true,               // ✅ fast/balanced/high_accuracy
       maxPages: true,           // ✅ max_pages parameter
-      pageRange: true,          // ✅ page_range parameter
-      langs: true,              // ✅ langs parameter
+      pageRange: true,          // ✅ page_range parameter (0-indexed)
+      langs: 'deprecated',      // ⚠️ DEPRECATED: API ignores, handled automatically
       extractImages: false,     // ❌ VLM focuses on extraction, not image output
       segmentation: true,       // ✅ segmentation_schema parameter
       citations: true,          // ✅ Returns [field]_citations
-      blockCorrectionPrompt: true, // ✅ block_correction_prompt parameter
+      blockCorrectionPrompt: 'deprecated', // ⚠️ DEPRECATED: Not currently supported
       paginate: false,          // ❌ Not relevant for JSON output
       stripExistingOCR: false,  // ❌ Not exposed in VLM API
-      formatLines: false        // ❌ Not relevant for JSON output
+      formatLines: false,       // ❌ Not relevant for JSON output
+      forceOCR: 'deprecated',   // ⚠️ DEPRECATED: No effect per API docs
+      chartUnderstanding: true, // ✅ extras=chart_understanding
+      extractLinks: true,       // ✅ extras=extract_links
+      imageCaptions: false      // ❌ Not relevant for JSON output
     }
   }
 } as const satisfies Record<string, DatalabProviderMetadata>;
