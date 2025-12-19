@@ -5,7 +5,21 @@ export * from "./types";
 export { SchemaTranslator } from "./schema-translator";
 
 // Export schema prompt formatter
-export { buildSchemaPromptSection, formatSchemaForPrompt, combineSchemaAndUserPrompt } from "./schema-prompt-formatter";
+export {
+  buildSchemaPromptSection,
+  formatSchemaForPrompt,
+  combineSchemaAndUserPrompt,
+  combineSchemaUserAndDerivedPrompts,
+  buildLLMDerivedFeaturesPrompt,
+  buildOutputFormatPrompt,
+  buildConfidencePrompt,
+  buildSourcesPrompt,
+  buildBlockClassificationPrompt,
+  buildLanguageHintsPrompt
+} from "./schema-prompt-formatter";
+
+// Export metadata extractor
+export { extractMetadataFromResponse, shouldExtractMetadata } from "./metadata-extractor";
 
 // Export provider registry
 export { providerRegistry, registerProvider, createProviderFromRegistry } from "./provider-registry";
@@ -260,6 +274,22 @@ export function buildLLMProvider(config: FallbackConfig): CoreVLMProvider {
 
   return coreProvider;
 }
+
+// Export Gemini bounding box schema and utilities
+export {
+  geminiBoundingBoxSchema,
+  GEMINI_BBOX_EXTRACTION_PROMPT,
+  BLOCK_TYPES,
+  normalizeGeminiBBox,
+  toGeminiBBox,
+  convertGeminiBlocksToDocumentBlocks
+} from './gemini-bbox-schema';
+export type {
+  BlockType,
+  GeminiBoundingBoxBlock,
+  NormalizedBBox,
+  DocumentBlock
+} from './gemini-bbox-schema';
 
 // Export comprehensive metadata (MIME types, capabilities, helpers)
 export * from './metadata.js';

@@ -5,10 +5,12 @@ import type {
   UnifiedSchema,
   LLMResponse,
   ProviderCapabilities,
-  ResourceLimits
+  ResourceLimits,
+  LLMDerivedOptions
 } from "../types";
 import { SchemaTranslator } from "../schema-translator";
-import { combineSchemaAndUserPrompt } from "../schema-prompt-formatter";
+import { combineSchemaAndUserPrompt, combineSchemaUserAndDerivedPrompts } from "../schema-prompt-formatter";
+import { extractMetadataFromResponse, shouldExtractMetadata } from "../metadata-extractor";
 import { fetchWithTimeout, DEFAULT_LIMITS, safeJsonParse } from "@doclo/core/security";
 
 /**
@@ -58,6 +60,7 @@ export class XAIProvider implements LLMProvider {
     max_tokens?: number;
     reasoning?: import("../types").ReasoningConfig;
     embedSchemaInPrompt?: boolean;
+    derivedOptions?: LLMDerivedOptions;  // LLM-derived feature options
   }): Promise<LLMResponse<T>> {
     const startTime = Date.now();
 
@@ -69,6 +72,9 @@ export class XAIProvider implements LLMProvider {
       throw new Error('schema is required when mode is "strict"');
     }
 
+    // Check if we need to extract metadata from response
+    const extractMetadata = shouldExtractMetadata(params.derivedOptions);
+
     // Embed schema in prompt if enabled (default: true) and schema exists
     const shouldEmbedSchema = params.embedSchemaInPrompt !== false && params.schema;
     let enhancedInput = params.input;
@@ -77,16 +83,32 @@ export class XAIProvider implements LLMProvider {
       // Convert schema to JSON Schema format
       const jsonSchema = this.translator.convertZodIfNeeded(params.schema!);
 
-      // Combine schema prompt with user's text
-      const enhancedText = combineSchemaAndUserPrompt(
-        jsonSchema,
-        params.input.text || ''
-      );
+      // Combine schema prompt with user's text and derived options
+      const enhancedText = params.derivedOptions
+        ? combineSchemaUserAndDerivedPrompts(
+            jsonSchema,
+            params.input.text || '',
+            params.derivedOptions
+          )
+        : combineSchemaAndUserPrompt(
+            jsonSchema,
+            params.input.text || ''
+          );
 
       enhancedInput = {
         ...params.input,
         text: enhancedText
       };
+    } else if (params.derivedOptions) {
+      // Even without schema, add derived features prompts
+      const { buildLLMDerivedFeaturesPrompt } = await import("../schema-prompt-formatter");
+      const derivedPrompt = buildLLMDerivedFeaturesPrompt(params.derivedOptions);
+      if (derivedPrompt) {
+        enhancedInput = {
+          ...params.input,
+          text: (params.input.text || '') + '\n\n' + derivedPrompt
+        };
+      }
     }
 
     // Build messages with multimodal content (using enhanced input)
@@ -196,7 +218,12 @@ export class XAIProvider implements LLMProvider {
     // Parse response
     const message = data.choices?.[0]?.message;
     const content = message?.content ?? "{}";
-    const parsed = safeJsonParse(content) as T;
+    const rawParsed = safeJsonParse(content);
+
+    // Extract metadata if derived options were enabled
+    const { json: parsed, metadata } = extractMetadata
+      ? extractMetadataFromResponse<T>(rawParsed)
+      : { json: rawParsed as T, metadata: undefined };
 
     // Extract reasoning fields if present
     const reasoning = message?.reasoning;
@@ -228,7 +255,8 @@ export class XAIProvider implements LLMProvider {
         model: this.config.model
       },
       reasoning,
-      reasoning_details
+      reasoning_details,
+      metadata
     };
   }
 

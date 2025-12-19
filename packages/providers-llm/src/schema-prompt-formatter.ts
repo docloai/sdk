@@ -184,3 +184,262 @@ export function combineSchemaAndUserPrompt(
 
   return schemaSection + '\n\n' + userPrompt;
 }
+
+// ============================================================================
+// LLM-Derived Feature Prompts
+// ============================================================================
+
+/**
+ * Output format types for LLM text generation
+ */
+export type OutputFormat = 'markdown' | 'html' | 'json' | 'text';
+export type TableFormat = 'markdown' | 'html' | 'csv';
+export type ChunkingStrategy = 'page' | 'section' | 'paragraph' | 'semantic';
+
+/**
+ * Options for LLM-derived features that are implemented via prompting
+ */
+export interface LLMDerivedPromptOptions {
+  outputFormat?: OutputFormat;
+  tableFormat?: TableFormat;
+  pageMarkers?: boolean;
+  includeConfidence?: boolean;
+  includeSources?: boolean;
+  includeBlockTypes?: boolean;
+  extractHeaders?: boolean;
+  extractFooters?: boolean;
+  chunkingStrategy?: ChunkingStrategy;
+  maxChunkSize?: number;
+  languageHints?: string[];
+}
+
+/**
+ * Builds prompt additions for output format options
+ */
+export function buildOutputFormatPrompt(options: LLMDerivedPromptOptions): string {
+  const parts: string[] = [];
+
+  // Output format
+  if (options.outputFormat) {
+    switch (options.outputFormat) {
+      case 'markdown':
+        parts.push('Format all text content using markdown syntax. Use proper headings (#, ##, ###), lists (-, *), bold (**text**), and other markdown formatting where appropriate.');
+        break;
+      case 'html':
+        parts.push('Format all text content as valid HTML. Use semantic tags like <p>, <h1>-<h6>, <ul>, <ol>, <strong>, <em> where appropriate.');
+        break;
+      case 'json':
+        parts.push('For text fields that contain structured data, format them as embedded JSON strings where appropriate.');
+        break;
+      case 'text':
+        parts.push('Return plain text without any formatting. No markdown, HTML, or other markup.');
+        break;
+    }
+  }
+
+  // Table format
+  if (options.tableFormat) {
+    switch (options.tableFormat) {
+      case 'markdown':
+        parts.push('Format all tables using markdown table syntax with | column separators and header row with ---.');
+        break;
+      case 'html':
+        parts.push('Format all tables as HTML <table> elements with <thead>, <tbody>, <tr>, <th>, and <td> tags.');
+        break;
+      case 'csv':
+        parts.push('Format all tables as CSV with headers in the first row and comma-separated values.');
+        break;
+    }
+  }
+
+  // Page markers
+  if (options.pageMarkers) {
+    parts.push('Insert "---" page break markers between content from different pages of the document.');
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Builds prompt additions for language hints
+ */
+export function buildLanguageHintsPrompt(languages: string[]): string {
+  if (!languages || languages.length === 0) {
+    return '';
+  }
+  return `The document is written in ${languages.join(', ')}. Extract and preserve text in the original language(s).`;
+}
+
+/**
+ * Builds prompt additions for confidence scoring
+ */
+export function buildConfidencePrompt(): string {
+  return `
+For each extracted field, assess your confidence level and include it in the "_confidence" object:
+- Use a number from 0.0 to 1.0 where:
+  - 0.9-1.0: Very high confidence - text is clear and unambiguous
+  - 0.7-0.9: High confidence - minor ambiguity but likely correct
+  - 0.5-0.7: Medium confidence - some uncertainty or partial visibility
+  - 0.3-0.5: Low confidence - significant uncertainty
+  - 0.0-0.3: Very low confidence - guessing or text was unclear
+
+Include "_confidence" as a sibling object mapping field paths to their scores.
+Example: "_confidence": { "invoiceNumber": 0.95, "amount": 0.82 }
+`.trim();
+}
+
+/**
+ * Builds prompt additions for source citations with bounding boxes
+ */
+export function buildSourcesPrompt(): string {
+  return `
+For each extracted field, identify the source location in the document and include it in the "_sources" array:
+Each source entry should contain:
+- "field": The field name/path that was extracted
+- "text": The exact text from the document used for extraction
+- "bbox": Bounding box as [y_min, x_min, y_max, x_max] normalized to 0-1000 scale
+- "page": Page number (0-indexed) where the text appears
+
+Include "_sources" as a sibling array to your extracted data.
+Example: "_sources": [{ "field": "invoiceNumber", "text": "INV-001", "bbox": [100, 50, 120, 150], "page": 0 }]
+`.trim();
+}
+
+/**
+ * Builds prompt additions for block type classification
+ */
+export function buildBlockClassificationPrompt(): string {
+  return `
+For each extracted element or text block, classify its type in a "_blockTypes" object:
+- "title": Main document title or major section headers
+- "heading": Section headings and subheadings
+- "paragraph": Body text paragraphs
+- "table": Tabular data
+- "list": Bulleted or numbered lists
+- "header": Page headers (repeated at top of pages)
+- "footer": Page footers (repeated at bottom of pages)
+- "caption": Image or figure captions
+- "code": Code blocks or preformatted text
+
+Include "_blockTypes" mapping field paths to their block type.
+Example: "_blockTypes": { "summary": "paragraph", "items": "list" }
+`.trim();
+}
+
+/**
+ * Builds prompt additions for header/footer extraction
+ */
+export function buildHeaderFooterPrompt(options: { extractHeaders?: boolean; extractFooters?: boolean }): string {
+  const parts: string[] = [];
+
+  if (options.extractHeaders) {
+    parts.push('Identify and extract document headers (repeated content at the top of pages) into a "_headers" array.');
+  }
+
+  if (options.extractFooters) {
+    parts.push('Identify and extract document footers (repeated content at the bottom of pages, like page numbers) into a "_footers" array.');
+  }
+
+  if (parts.length > 0) {
+    parts.push('Each header/footer entry should include: { "text": "...", "pages": [0, 1, 2] } listing which pages contain it.');
+  }
+
+  return parts.join('\n');
+}
+
+/**
+ * Builds prompt additions for semantic chunking
+ */
+export function buildChunkingPrompt(strategy: ChunkingStrategy, maxChunkSize?: number): string {
+  const sizeNote = maxChunkSize
+    ? ` Keep chunks under ${maxChunkSize} characters when possible.`
+    : '';
+
+  switch (strategy) {
+    case 'page':
+      return `Organize the extracted content by page. Include page number for each chunk.${sizeNote}`;
+    case 'section':
+      return `Divide the document into logical sections based on headings and structure. Each section should be a coherent unit.${sizeNote}`;
+    case 'paragraph':
+      return `Divide the content into individual paragraphs, preserving the natural paragraph breaks from the document.${sizeNote}`;
+    case 'semantic':
+      return `Divide the document into semantically coherent chunks. Each chunk should be a self-contained unit of meaning that could stand alone.${sizeNote}`;
+    default:
+      return '';
+  }
+}
+
+/**
+ * Combines all LLM-derived feature prompts into a single prompt section
+ */
+export function buildLLMDerivedFeaturesPrompt(options: LLMDerivedPromptOptions): string {
+  const parts: string[] = [];
+
+  // Output format options
+  const formatPrompt = buildOutputFormatPrompt(options);
+  if (formatPrompt) {
+    parts.push(formatPrompt);
+  }
+
+  // Language hints
+  if (options.languageHints && options.languageHints.length > 0) {
+    parts.push(buildLanguageHintsPrompt(options.languageHints));
+  }
+
+  // Metadata features (confidence, sources, block types)
+  if (options.includeConfidence) {
+    parts.push(buildConfidencePrompt());
+  }
+
+  if (options.includeSources) {
+    parts.push(buildSourcesPrompt());
+  }
+
+  if (options.includeBlockTypes) {
+    parts.push(buildBlockClassificationPrompt());
+  }
+
+  // Header/footer extraction
+  if (options.extractHeaders || options.extractFooters) {
+    parts.push(buildHeaderFooterPrompt(options));
+  }
+
+  // Chunking strategy
+  if (options.chunkingStrategy) {
+    parts.push(buildChunkingPrompt(options.chunkingStrategy, options.maxChunkSize));
+  }
+
+  if (parts.length === 0) {
+    return '';
+  }
+
+  return `
+==================================================
+ADDITIONAL OUTPUT REQUIREMENTS
+==================================================
+
+${parts.join('\n\n')}
+
+==================================================
+`.trim();
+}
+
+/**
+ * Combines schema prompt with user prompt and LLM-derived features
+ */
+export function combineSchemaUserAndDerivedPrompts(
+  schema: JSONSchema,
+  userPrompt: string,
+  derivedOptions?: LLMDerivedPromptOptions
+): string {
+  let result = combineSchemaAndUserPrompt(schema, userPrompt);
+
+  if (derivedOptions) {
+    const derivedPrompt = buildLLMDerivedFeaturesPrompt(derivedOptions);
+    if (derivedPrompt) {
+      result = result + '\n\n' + derivedPrompt;
+    }
+  }
+
+  return result;
+}

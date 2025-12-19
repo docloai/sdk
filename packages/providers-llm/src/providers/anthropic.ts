@@ -5,10 +5,12 @@ import type {
   UnifiedSchema,
   LLMResponse,
   ProviderCapabilities,
-  ResourceLimits
+  ResourceLimits,
+  LLMDerivedOptions
 } from "../types";
 import { SchemaTranslator } from "../schema-translator";
-import { combineSchemaAndUserPrompt } from "../schema-prompt-formatter";
+import { combineSchemaAndUserPrompt, combineSchemaUserAndDerivedPrompts } from "../schema-prompt-formatter";
+import { extractMetadataFromResponse, shouldExtractMetadata } from "../metadata-extractor";
 import { fetchWithTimeout, DEFAULT_LIMITS, validateUrl, safeJsonParse } from "@doclo/core/security";
 import { detectMimeTypeFromBase64, validateMimeType } from "@doclo/core";
 
@@ -59,6 +61,7 @@ export class AnthropicProvider implements LLMProvider {
     max_tokens?: number;
     reasoning?: import("../types").ReasoningConfig;
     embedSchemaInPrompt?: boolean;
+    derivedOptions?: LLMDerivedOptions;  // LLM-derived feature options
   }): Promise<LLMResponse<T>> {
     const startTime = Date.now();
 
@@ -70,6 +73,9 @@ export class AnthropicProvider implements LLMProvider {
       throw new Error('schema is required when mode is "strict"');
     }
 
+    // Check if we need to extract metadata from response
+    const extractMetadata = shouldExtractMetadata(params.derivedOptions);
+
     // Embed schema in prompt if enabled (default: true) and schema exists
     const shouldEmbedSchema = params.embedSchemaInPrompt !== false && params.schema;
     let enhancedInput = params.input;
@@ -78,16 +84,32 @@ export class AnthropicProvider implements LLMProvider {
       // Convert schema to JSON Schema format
       const jsonSchema = this.translator.convertZodIfNeeded(params.schema!);
 
-      // Combine schema prompt with user's text
-      const enhancedText = combineSchemaAndUserPrompt(
-        jsonSchema,
-        params.input.text || ''
-      );
+      // Combine schema prompt with user's text and derived options
+      const enhancedText = params.derivedOptions
+        ? combineSchemaUserAndDerivedPrompts(
+            jsonSchema,
+            params.input.text || '',
+            params.derivedOptions
+          )
+        : combineSchemaAndUserPrompt(
+            jsonSchema,
+            params.input.text || ''
+          );
 
       enhancedInput = {
         ...params.input,
         text: enhancedText
       };
+    } else if (params.derivedOptions) {
+      // Even without schema, add derived features prompts
+      const { buildLLMDerivedFeaturesPrompt } = await import("../schema-prompt-formatter");
+      const derivedPrompt = buildLLMDerivedFeaturesPrompt(params.derivedOptions);
+      if (derivedPrompt) {
+        enhancedInput = {
+          ...params.input,
+          text: (params.input.text || '') + '\n\n' + derivedPrompt
+        };
+      }
     }
 
     // Build messages with multimodal content (using enhanced input)
@@ -192,13 +214,10 @@ export class AnthropicProvider implements LLMProvider {
 
       const data = await response.json();
       const message = data.choices?.[0]?.message;
-      let content = message?.content ?? (useNewStructuredOutputs ? "{}" : "}");
+      let content = message?.content ?? "{}";
 
-      // For OLDER models: we prefilled with "{", so prepend it back
-      // For NEW models: content is already complete JSON
-      if (!useNewStructuredOutputs) {
-        content = "{" + content;
-      }
+      // Both NEW models (json_schema) and OLDER models (json_object) return complete JSON
+      // No prefill workaround needed - OpenRouter's Response Healing handles JSON syntax fixes
 
       // Extract reasoning fields if present
       const reasoning = message?.reasoning;
@@ -268,9 +287,14 @@ export class AnthropicProvider implements LLMProvider {
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'anthropic');
 
+      // Extract metadata if derived options were enabled
+      const { json: cleanJson, metadata } = extractMetadata
+        ? extractMetadataFromResponse<T>(parsed)
+        : { json: parsed as T, metadata: undefined };
+
       return {
-        json: parsed as T,
-        rawText: JSON.stringify(parsed),
+        json: cleanJson as T,
+        rawText: JSON.stringify(cleanJson),
         metrics: {
           costUSD,
           inputTokens,
@@ -283,7 +307,8 @@ export class AnthropicProvider implements LLMProvider {
           cacheReadInputTokens
         },
         reasoning,
-        reasoning_details
+        reasoning_details,
+        metadata
       };
     } else {
       // Use native Anthropic API
@@ -376,9 +401,14 @@ export class AnthropicProvider implements LLMProvider {
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'anthropic');
 
+      // Extract metadata if derived options were enabled
+      const { json: cleanJson, metadata } = extractMetadata
+        ? extractMetadataFromResponse<T>(parsed)
+        : { json: parsed as T, metadata: undefined };
+
       return {
-        json: parsed as T,
-        rawText: JSON.stringify(parsed),
+        json: cleanJson as T,
+        rawText: JSON.stringify(cleanJson),
         metrics: {
           costUSD,
           inputTokens,
@@ -395,7 +425,8 @@ export class AnthropicProvider implements LLMProvider {
           signature: null,
           id: 'thinking-1',
           format: 'anthropic-claude-v1'
-        }] : undefined
+        }] : undefined,
+        metadata
       };
     }
   }
@@ -457,23 +488,15 @@ export class AnthropicProvider implements LLMProvider {
       requestBody.response_format = {
         type: 'json_object'
       };
-    } else {
-      // Strict mode: use json_schema with strict validation
+    } else if (useNewStructuredOutputs) {
+      // Strict mode with NEW structured outputs API (Sonnet 4.5+, Opus 4.1+)
+      // These models support json_schema response_format natively
       const openRouterSchema = this.translator.toClaudeOpenRouterSchema(schema!);
       const fixedSchema = this.fixSchemaForStrictMode(openRouterSchema);
 
       if (process.env.DEBUG_PROVIDERS) {
-        console.log('[AnthropicProvider] Original schema:', JSON.stringify(openRouterSchema, null, 2));
+        console.log('[AnthropicProvider] Using json_schema (native support)');
         console.log('[AnthropicProvider] Fixed schema:', JSON.stringify(fixedSchema, null, 2));
-      }
-
-      // Add response prefill for OLDER models (legacy workaround)
-      // NEW models don't need prefilling with json_schema response_format
-      if (!useNewStructuredOutputs) {
-        messageArray.push({
-          role: "assistant",
-          content: "{"
-        });
       }
 
       requestBody.response_format = {
@@ -483,6 +506,17 @@ export class AnthropicProvider implements LLMProvider {
           strict: true,
           schema: fixedSchema
         }
+      };
+    } else {
+      // Strict mode for OLDER models (Haiku, etc.) that don't support native json_schema
+      // Use json_object mode and rely on schema-in-prompt for structure enforcement
+      // OpenRouter's Response Healing will fix any JSON syntax issues
+      if (process.env.DEBUG_PROVIDERS) {
+        console.log('[AnthropicProvider] Using json_object (legacy mode, schema in prompt)');
+      }
+
+      requestBody.response_format = {
+        type: 'json_object'
       };
     }
 

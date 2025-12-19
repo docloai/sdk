@@ -7,10 +7,12 @@ import type {
   ProviderCapabilities,
   ResourceLimits,
   JsonMode,
-  ReasoningConfig
+  ReasoningConfig,
+  LLMDerivedOptions
 } from "../types";
 import { SchemaTranslator } from "../schema-translator";
-import { combineSchemaAndUserPrompt } from "../schema-prompt-formatter";
+import { combineSchemaAndUserPrompt, combineSchemaUserAndDerivedPrompts } from "../schema-prompt-formatter";
+import { extractMetadataFromResponse, shouldExtractMetadata } from "../metadata-extractor";
 import { fetchWithTimeout, validateUrl, DEFAULT_LIMITS, safeJsonParse } from "@doclo/core/security";
 
 /** Internal types for Google API structures */
@@ -143,6 +145,7 @@ export class GoogleProvider implements LLMProvider {
     max_tokens?: number;
     reasoning?: import("../types").ReasoningConfig;
     embedSchemaInPrompt?: boolean;
+    derivedOptions?: LLMDerivedOptions;  // LLM-derived feature options
   }): Promise<LLMResponse<T>> {
     const startTime = Date.now();
 
@@ -164,6 +167,9 @@ export class GoogleProvider implements LLMProvider {
       throw new Error('schema is required when mode is "strict"');
     }
 
+    // Check if we need to extract metadata from response
+    const extractMetadata = shouldExtractMetadata(params.derivedOptions);
+
     // Embed schema in prompt if enabled (default: true) and schema exists
     const shouldEmbedSchema = params.embedSchemaInPrompt !== false && params.schema;
     let enhancedInput = normalizedInput;
@@ -172,16 +178,32 @@ export class GoogleProvider implements LLMProvider {
       // Convert schema to JSON Schema format
       const jsonSchema = this.translator.convertZodIfNeeded(params.schema!);
 
-      // Combine schema prompt with user's text
-      const enhancedText = combineSchemaAndUserPrompt(
-        jsonSchema,
-        normalizedInput.text || ''
-      );
+      // Combine schema prompt with user's text and derived options
+      const enhancedText = params.derivedOptions
+        ? combineSchemaUserAndDerivedPrompts(
+            jsonSchema,
+            normalizedInput.text || '',
+            params.derivedOptions
+          )
+        : combineSchemaAndUserPrompt(
+            jsonSchema,
+            normalizedInput.text || ''
+          );
 
       enhancedInput = {
         ...normalizedInput,
         text: enhancedText
       };
+    } else if (params.derivedOptions) {
+      // Even without schema, add derived features prompts
+      const { buildLLMDerivedFeaturesPrompt } = await import("../schema-prompt-formatter");
+      const derivedPrompt = buildLLMDerivedFeaturesPrompt(params.derivedOptions);
+      if (derivedPrompt) {
+        enhancedInput = {
+          ...normalizedInput,
+          text: (normalizedInput.text || '') + '\n\n' + derivedPrompt
+        };
+      }
     }
 
     // Build contents with multimodal parts (using enhanced input)
@@ -282,7 +304,12 @@ export class GoogleProvider implements LLMProvider {
       // Clean up markdown code blocks if present
       content = content.replace(/^```json\s*\n?/,'').replace(/\n?```\s*$/,'').trim();
 
-      const parsed = safeJsonParse(content) as T;
+      const rawParsed = safeJsonParse(content);
+
+      // Extract metadata if derived options were enabled
+      const { json: parsed, metadata } = extractMetadata
+        ? extractMetadataFromResponse<T>(rawParsed)
+        : { json: rawParsed as T, metadata: undefined };
 
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'google');
@@ -300,7 +327,8 @@ export class GoogleProvider implements LLMProvider {
           model: this.config.model
         },
         reasoning,
-        reasoning_details
+        reasoning_details,
+        metadata
       };
     } else {
       // Native Google format
@@ -314,7 +342,12 @@ export class GoogleProvider implements LLMProvider {
       const thinkingPart = candidate?.content?.parts?.find((part: GeminiPart) => part.thought === true);
       const reasoning = thinkingPart?.text;
 
-      const parsed = safeJsonParse(content) as T;
+      const rawParsed = safeJsonParse(content);
+
+      // Extract metadata if derived options were enabled
+      const { json: parsed, metadata } = extractMetadata
+        ? extractMetadataFromResponse<T>(rawParsed)
+        : { json: rawParsed as T, metadata: undefined };
 
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'google');
@@ -338,7 +371,8 @@ export class GoogleProvider implements LLMProvider {
           signature: null,
           id: 'thinking-1',
           format: 'google-gemini-v1'
-        }] : undefined
+        }] : undefined,
+        metadata
       };
     }
   }

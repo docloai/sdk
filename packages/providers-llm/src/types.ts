@@ -105,6 +105,7 @@ export interface LLMResponse<T = unknown> {
   metrics: ResponseMetrics;
   reasoning?: string;  // Reasoning text (if not excluded)
   reasoning_details?: ReasoningDetail[];  // Structured reasoning details
+  metadata?: LLMExtractedMetadata;  // Extracted metadata (when derived options are enabled)
 }
 
 /** Provider capability flags */
@@ -121,6 +122,56 @@ export interface ProviderCapabilities {
 /** JSON output mode */
 export type JsonMode = 'strict' | 'relaxed';
 
+/**
+ * LLM-derived feature options that are implemented via prompting
+ * These options are normalized across providers and work through prompt engineering
+ */
+export interface LLMDerivedOptions {
+  /** Format for text output (markdown, html, json, text) */
+  outputFormat?: 'markdown' | 'html' | 'json' | 'text';
+  /** Format for tables within text fields */
+  tableFormat?: 'markdown' | 'html' | 'csv';
+  /** Add page break markers (---) between pages */
+  pageMarkers?: boolean;
+  /** Include per-field confidence scores (attached to result, not in JSON) */
+  includeConfidence?: boolean;
+  /** Include source citations with bounding boxes (attached to result, not in JSON) */
+  includeSources?: boolean;
+  /** Include block type classification for each extracted element */
+  includeBlockTypes?: boolean;
+  /** Extract document headers (repeated content at top of pages) */
+  extractHeaders?: boolean;
+  /** Extract document footers (repeated content at bottom of pages) */
+  extractFooters?: boolean;
+  /** Document chunking strategy */
+  chunkingStrategy?: 'page' | 'section' | 'paragraph' | 'semantic';
+  /** Maximum chunk size in characters (when using chunking) */
+  maxChunkSize?: number;
+  /** Language hints for the document */
+  languageHints?: string[];
+}
+
+/**
+ * Extracted metadata from LLM response (populated when derived options are enabled)
+ */
+export interface LLMExtractedMetadata {
+  /** Per-field confidence scores (0-1) */
+  confidence?: Record<string, number>;
+  /** Source citations with bounding boxes */
+  sources?: Array<{
+    field: string;
+    text: string;
+    bbox?: [number, number, number, number];  // [y_min, x_min, y_max, x_max]
+    page?: number;
+  }>;
+  /** Block type classifications */
+  blockTypes?: Record<string, string>;
+  /** Extracted headers */
+  headers?: Array<{ text: string; pages: number[] }>;
+  /** Extracted footers */
+  footers?: Array<{ text: string; pages: number[] }>;
+}
+
 /** Provider interface */
 export interface LLMProvider {
   readonly name: string;
@@ -133,6 +184,7 @@ export interface LLMProvider {
     max_tokens?: number;  // Max tokens for response (needed for reasoning budget calculation)
     reasoning?: ReasoningConfig;  // Reasoning configuration
     embedSchemaInPrompt?: boolean;  // Embed schema field names in prompt (default: true)
+    derivedOptions?: LLMDerivedOptions;  // LLM-derived feature options
   }): Promise<LLMResponse<T>>;
 }
 

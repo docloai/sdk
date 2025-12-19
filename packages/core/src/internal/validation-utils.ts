@@ -198,10 +198,55 @@ export type OCRProviderOptions = PageRangeOptions & LanguageOptions & {
 };
 
 /**
+ * Output format options for LLM-based text fields
+ * Controls how text content is formatted in the response
+ */
+export type OutputFormat = 'markdown' | 'html' | 'json' | 'text';
+
+/**
+ * Table format options for tabular data in responses
+ */
+export type TableFormat = 'markdown' | 'html' | 'csv';
+
+/**
+ * Chunking strategy options for document segmentation
+ */
+export type ChunkingStrategy = 'page' | 'section' | 'paragraph' | 'semantic';
+
+/**
+ * LLM-derived feature options
+ * These features are implemented via prompting rather than native API support
+ */
+export type LLMDerivedOptions = {
+  /** Format for text output in string fields */
+  outputFormat?: OutputFormat;
+  /** Format for tables within text fields */
+  tableFormat?: TableFormat;
+  /** Add page break markers (---) between pages */
+  pageMarkers?: boolean;
+  /** Include per-field confidence scores (attached to result, not in JSON) */
+  includeConfidence?: boolean;
+  /** Include source citations with bounding boxes (attached to result, not in JSON) */
+  includeSources?: boolean;
+  /** Include block type classification for each extracted element */
+  includeBlockTypes?: boolean;
+  /** Extract document headers (repeated content at top of pages) */
+  extractHeaders?: boolean;
+  /** Extract document footers (repeated content at bottom of pages) */
+  extractFooters?: boolean;
+  /** Document chunking strategy */
+  chunkingStrategy?: ChunkingStrategy;
+  /** Maximum chunk size in characters (when using chunking) */
+  maxChunkSize?: number;
+  /** Language hints for the document (e.g., ['English', 'German']) */
+  languageHints?: string[];
+};
+
+/**
  * Extended VLM provider options for document extraction
  * These options are normalized across different VLM providers
  */
-export type VLMProviderOptions = PageRangeOptions & LanguageOptions & {
+export type VLMProviderOptions = PageRangeOptions & LanguageOptions & LLMDerivedOptions & {
   /** Processing quality/speed tradeoff */
   mode?: ProcessingMode;
   /** Force OCR even on text-based PDFs */
