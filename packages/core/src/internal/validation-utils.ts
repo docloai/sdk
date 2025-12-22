@@ -419,7 +419,7 @@ export type FlowResult<T = any> = {
 
 export type SplitDocument = {
   type: string;            // 'invoice', 'bunker', 'other'
-  schema: object;          // Matched schema
+  schema?: object;         // Matched schema (optional - only present when schemas provided)
   pages: number[];         // Page numbers
   bounds?: BBox;           // Bounding box
   input: FlowInput;        // Original input for re-processing
@@ -573,7 +573,31 @@ export type ParseNodeConfig = {
 
 export type SplitNodeConfig = {
   provider: VLMProvider;
-  schemas: Record<string, object>;  // { invoice: Schema, bunker: Schema }
+
+  /**
+   * Simple category definitions (recommended).
+   * Each category can be a string or an object with name and optional description.
+   *
+   * @example
+   * ```typescript
+   * split({
+   *   provider: vlmProvider,
+   *   categories: [
+   *     'invoice',
+   *     { name: 'cover_letter', description: 'Cover letter or transmittal pages' },
+   *     { name: 'contract', description: 'Legal agreements with terms and signatures' }
+   *   ]
+   * })
+   * ```
+   */
+  categories?: (string | { name: string; description?: string })[];
+
+  /**
+   * @deprecated Use `categories` instead. Full schema definitions for backwards compatibility.
+   * Schema names are used as category names, but schemas are no longer attached to output.
+   */
+  schemas?: Record<string, object>;  // { invoice: Schema, bunker: Schema }
+
   includeOther?: boolean;           // Default: true
   consensus?: ConsensusConfig;
   schemaRef?: string;               // Reference to schema asset (e.g., "document-split@2.0.0")
@@ -585,7 +609,7 @@ export type SplitNodeConfig = {
    * ```typescript
    * split({
    *   provider: vlmProvider,
-   *   schemas: { invoice: invoiceSchema, receipt: receiptSchema },
+   *   categories: ['invoice', 'receipt', 'contract'],
    *   reasoning: { enabled: true, effort: 'high' }
    * })
    * ```

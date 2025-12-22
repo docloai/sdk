@@ -176,7 +176,15 @@ export type ExtractConfig = {
 export type SplitConfig = {
   type: 'split';
   providerRef: string;
-  schemas: Record<string, JSONSchemaNode>;
+  /**
+   * Simple category definitions (recommended).
+   * Each category can be a string or an object with name and optional description.
+   */
+  categories?: (string | { name: string; description?: string })[];
+  /**
+   * @deprecated Use `categories` instead. Full schema definitions for backwards compatibility.
+   */
+  schemas?: Record<string, JSONSchemaNode>;
   includeOther?: boolean;
   consensus?: {
     runs: number;
@@ -575,7 +583,10 @@ function createNodeFromConfig(
       // split expects VLMProvider
       return split({
         provider: provider as VLMProvider,
-        schemas: cfg.schemas,
+        // Support both categories (new) and schemas (legacy)
+        ...(cfg.categories && { categories: cfg.categories }),
+        ...(cfg.schemas && { schemas: cfg.schemas }),
+        ...(cfg.schemaRef && { schemaRef: cfg.schemaRef }),
         includeOther: cfg.includeOther,
         consensus: cfg.consensus,
         maxTokens: cfg.maxTokens

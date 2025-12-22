@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-llm",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Core LLM provider utilities, types, and schema translation for Doclo SDK",
   "license": "MIT",
   "repository": {

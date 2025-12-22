@@ -15,6 +15,7 @@ export type ProviderVendor =
   | 'datalab'      // Datalab (surya, marker-ocr, marker-vlm)
   | 'reducto'      // Reducto (unified document processing)
   | 'unsiloed'     // Unsiloed (unified document processing)
+  | 'extend'       // Extend.ai (document parsing, extraction, classification, splitting)
   | 'openai'       // OpenAI (gpt-4.1, o3, o4-mini)
   | 'anthropic'    // Anthropic (claude-*)
   | 'google'       // Google (gemini-*)

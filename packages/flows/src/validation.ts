@@ -500,21 +500,54 @@ export function validateFlow(
 
         case 'split': {
           const cfg = config as SplitConfig;
-          if (!cfg.schemas) {
+          const hasCategories = cfg.categories && Array.isArray(cfg.categories);
+          const hasSchemas = cfg.schemas && typeof cfg.schemas === 'object';
+          const hasSchemaRef = cfg.schemaRef && typeof cfg.schemaRef === 'string';
+
+          // Must have at least one: categories, schemas, or schemaRef
+          if (!hasCategories && !hasSchemas && !hasSchemaRef) {
             errors.push({
               type: 'invalid_config',
               stepId,
-              message: 'Split node missing schemas'
+              message: 'Split node requires either categories, schemas, or schemaRef'
             });
-          } else if (typeof cfg.schemas !== 'object') {
+          }
+
+          // Cannot have both categories and schemas
+          if (hasCategories && hasSchemas) {
             errors.push({
               type: 'invalid_config',
               stepId,
-              message: 'Split node schemas must be an object'
+              message: 'Split node cannot have both categories and schemas. Use categories (recommended) or schemas, not both.'
             });
-          } else {
-            // Validate each schema structure
-            for (const [schemaName, schema] of Object.entries(cfg.schemas)) {
+          }
+
+          // Validate categories if provided
+          if (hasCategories) {
+            if (cfg.categories!.length === 0) {
+              warnings.push({
+                type: 'best_practice',
+                stepId,
+                message: 'Split node has no categories defined'
+              });
+            } else {
+              // Validate each category is either a string or { name: string; description?: string }
+              for (let i = 0; i < cfg.categories!.length; i++) {
+                const cat = cfg.categories![i];
+                if (typeof cat !== 'string' && (cat === null || typeof cat !== 'object' || !cat.name)) {
+                  errors.push({
+                    type: 'invalid_config',
+                    stepId,
+                    message: `Split node category at index ${i} must be a string or an object with a 'name' property`
+                  });
+                }
+              }
+            }
+          }
+
+          // Validate schemas if provided (legacy path)
+          if (hasSchemas && !hasCategories) {
+            for (const [schemaName, schema] of Object.entries(cfg.schemas!)) {
               const schemaError = validateJSONSchemaStructure(schema);
               if (schemaError) {
                 errors.push({
@@ -526,7 +559,7 @@ export function validateFlow(
               }
             }
 
-            if (Object.keys(cfg.schemas).length === 0) {
+            if (Object.keys(cfg.schemas!).length === 0) {
               warnings.push({
                 type: 'best_practice',
                 stepId,

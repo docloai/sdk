@@ -55,7 +55,8 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   async completeJson<T>(params: {
-    input: MultimodalInput;
+    input?: MultimodalInput;
+    prompt?: MultimodalInput | string;  // Alias for input (backwards compatibility with nodes)
     schema?: UnifiedSchema<T>;
     mode?: import("../types").JsonMode;
     max_tokens?: number;
@@ -64,6 +65,16 @@ export class AnthropicProvider implements LLMProvider {
     derivedOptions?: LLMDerivedOptions;  // LLM-derived feature options
   }): Promise<LLMResponse<T>> {
     const startTime = Date.now();
+
+    // Support both 'input' and 'prompt' parameter names (nodes use 'prompt')
+    const rawInput = params.input ?? params.prompt;
+    if (!rawInput) {
+      throw new Error('Either input or prompt must be provided');
+    }
+    // Normalize string prompt to MultimodalInput
+    const normalizedInput: MultimodalInput = typeof rawInput === 'string'
+      ? { text: rawInput }
+      : rawInput;
 
     // Determine mode: default to 'strict', auto-relaxed if schema omitted
     const mode = params.mode || (params.schema ? 'strict' : 'relaxed');
@@ -78,7 +89,7 @@ export class AnthropicProvider implements LLMProvider {
 
     // Embed schema in prompt if enabled (default: true) and schema exists
     const shouldEmbedSchema = params.embedSchemaInPrompt !== false && params.schema;
-    let enhancedInput = params.input;
+    let enhancedInput = normalizedInput;
 
     if (shouldEmbedSchema) {
       // Convert schema to JSON Schema format
@@ -88,16 +99,16 @@ export class AnthropicProvider implements LLMProvider {
       const enhancedText = params.derivedOptions
         ? combineSchemaUserAndDerivedPrompts(
             jsonSchema,
-            params.input.text || '',
+            normalizedInput.text || '',
             params.derivedOptions
           )
         : combineSchemaAndUserPrompt(
             jsonSchema,
-            params.input.text || ''
+            normalizedInput.text || ''
           );
 
       enhancedInput = {
-        ...params.input,
+        ...normalizedInput,
         text: enhancedText
       };
     } else if (params.derivedOptions) {
@@ -106,8 +117,8 @@ export class AnthropicProvider implements LLMProvider {
       const derivedPrompt = buildLLMDerivedFeaturesPrompt(params.derivedOptions);
       if (derivedPrompt) {
         enhancedInput = {
-          ...params.input,
-          text: (params.input.text || '') + '\n\n' + derivedPrompt
+          ...normalizedInput,
+          text: (normalizedInput.text || '') + '\n\n' + derivedPrompt
         };
       }
     }

@@ -1,6 +1,13 @@
-export { OpenAIProvider } from './openai';
-import { OpenAIProvider } from './openai';
-import { registerProvider } from '@doclo/providers-llm';
+// Re-export provider from the main package
+// This ensures users get the latest, feature-complete implementation
+export { OpenAIProvider } from '@doclo/providers-llm';
 
-// Auto-register the provider when this package is imported
-registerProvider('openai', (config) => new OpenAIProvider(config));
+// Re-export commonly used types for convenience
+export type {
+  ProviderConfig,
+  LLMResponse,
+  MultimodalInput,
+  UnifiedSchema,
+  ReasoningConfig,
+  LLMDerivedOptions
+} from '@doclo/providers-llm';

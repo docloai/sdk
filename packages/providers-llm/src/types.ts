@@ -149,6 +149,32 @@ export interface LLMDerivedOptions {
   maxChunkSize?: number;
   /** Language hints for the document */
   languageHints?: string[];
+
+  // Field normalization options (native on Extend.ai, prompt-derived on LLMs)
+
+  /**
+   * Normalize date fields to ISO 8601 format (YYYY-MM-DD)
+   * When enabled, date fields in the extraction output will be formatted consistently.
+   * Native support: Extend.ai (extend:type: "date")
+   * LLM support: Via prompting
+   */
+  dateNormalization?: boolean;
+
+  /**
+   * Normalize currency fields to { amount: number, currency: string } objects
+   * When enabled, monetary values are extracted as structured objects with ISO 4217 currency codes.
+   * Native support: Extend.ai (extend:type: "currency")
+   * LLM support: Via prompting
+   */
+  currencyNormalization?: boolean;
+
+  /**
+   * Detect and extract signature fields from documents
+   * When enabled, signature presence is detected and locations are reported.
+   * Native support: Extend.ai (extend:type: "signature"), Reducto
+   * LLM support: Via prompting (less reliable)
+   */
+  signatureDetection?: boolean;
 }
 
 /**
@@ -170,6 +196,30 @@ export interface LLMExtractedMetadata {
   headers?: Array<{ text: string; pages: number[] }>;
   /** Extracted footers */
   footers?: Array<{ text: string; pages: number[] }>;
+
+  // Field normalization metadata
+
+  /** Detected signatures with location and confidence */
+  signatures?: Array<{
+    field: string;
+    detected: boolean;
+    bbox?: [number, number, number, number];
+    page?: number;
+    confidence?: number;
+  }>;
+
+  /** Normalized currency values (original → normalized mapping) */
+  normalizedCurrencies?: Record<string, {
+    original: string;
+    amount: number;
+    currency: string;  // ISO 4217 code
+  }>;
+
+  /** Normalized date values (original → normalized mapping) */
+  normalizedDates?: Record<string, {
+    original: string;
+    normalized: string;  // ISO 8601 format (YYYY-MM-DD)
+  }>;
 }
 
 /** Provider interface */

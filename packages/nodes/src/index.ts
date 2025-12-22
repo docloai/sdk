@@ -1611,6 +1611,16 @@ export function parse(config: ParseNodeConfig) {
 
 /** Split node - VLM identifies document boundaries and types */
 export function split(config: SplitNodeConfig) {
+  // Validate: must have either categories, schemas, or schemaRef
+  if (!config.categories && !config.schemas && !config.schemaRef) {
+    throw new Error('Split node requires either categories, schemas, or schemaRef');
+  }
+
+  // Validate: cannot have both categories and schemas
+  if (config.categories && config.schemas) {
+    throw new Error('Split node cannot have both categories and schemas. Use categories (recommended) or schemas, not both.');
+  }
+
   // Validate provider compatibility at build time
   validateProviderCompatibility('split', config.provider, {
     requiresVLM: true,
@@ -1620,12 +1630,15 @@ export function split(config: SplitNodeConfig) {
 
   const splitNode = node<FlowInput, SplitDocument[]>("split", async (input: FlowInput, ctx: NodeCtx) => {
     const splitOnce = async () => {
-      // Resolve schemas from registry if schemaRef is provided
-      let schemas = config.schemas;
+      // Resolve categories/schemas based on config
+      let categoryNames: string[];
+      let categoryList: (string | { name: string; description?: string })[];
+      let schemas: Record<string, object> | undefined;
       let schemaId: string | undefined;
       let schemaVersion: string | undefined;
 
       if (config.schemaRef) {
+        // Load from schema registry (legacy path)
         const atIndex = config.schemaRef.indexOf('@');
         if (atIndex === -1) {
           schemaId = config.schemaRef;
@@ -1634,7 +1647,6 @@ export function split(config: SplitNodeConfig) {
             throw new Error(`Schema not found: ${config.schemaRef}`);
           }
           schemaVersion = schemaAsset.version;
-          // SchemaAsset.schema contains the actual schema data
           schemas = (schemaAsset.schema as any).schemas || schemaAsset.schema;
         } else {
           schemaId = config.schemaRef.substring(0, atIndex);
@@ -1645,13 +1657,30 @@ export function split(config: SplitNodeConfig) {
           }
           schemas = (schemaAsset.schema as any).schemas || schemaAsset.schema;
         }
+        categoryNames = Object.keys(schemas as Record<string, object>);
+        categoryList = categoryNames;
+      } else if (config.categories) {
+        // New simplified API: use categories directly
+        categoryList = config.categories;
+        categoryNames = config.categories.map(cat =>
+          typeof cat === 'string' ? cat : cat.name
+        );
+      } else if (config.schemas) {
+        // Legacy API: extract names from schemas
+        schemas = config.schemas;
+        categoryNames = Object.keys(schemas);
+        categoryList = categoryNames;
+      } else {
+        // This should never happen due to validation, but TypeScript needs it
+        throw new Error('Split node requires either categories, schemas, or schemaRef');
       }
 
-      const schemaNames = Object.keys(schemas);
+      // Add 'other' category if enabled
       if (config.includeOther !== false) {
-        schemaNames.push('other');
+        categoryNames.push('other');
       }
 
+      // Build JSON schema for VLM response
       const schema = {
         type: 'object' as const,
         properties: {
@@ -1660,7 +1689,7 @@ export function split(config: SplitNodeConfig) {
             items: {
               type: 'object' as const,
               properties: {
-                type: { type: 'string' as const, enum: schemaNames },
+                type: { type: 'string' as const, enum: categoryNames },
                 pages: { type: 'array' as const, items: { type: 'number' as const } }
               },
               required: ['type' as const, 'pages' as const]
@@ -1679,9 +1708,16 @@ export function split(config: SplitNodeConfig) {
       const detectedType = detectDocumentType(dataUrl);
       const isPDF = detectedType === 'application/pdf';
 
+      // Build prompt with category descriptions when available
+      const categoryPrompt = formatCategoriesForPrompt(
+        config.includeOther !== false
+          ? [...categoryList, 'other']
+          : categoryList
+      );
+
       const result = await config.provider.completeJson({
         prompt: {
-          text: `Identify and split documents in this file. Categorize each as one of: ${schemaNames.join(', ')}. Return the page numbers for each document.`,
+          text: `Identify and split documents in this file. Categorize each document segment into one of the following categories:\n${categoryPrompt}\n\nReturn the page numbers for each document segment.`,
           images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
           pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
         },
@@ -1690,12 +1726,27 @@ export function split(config: SplitNodeConfig) {
         max_tokens: config.maxTokens
       });
 
-      const splitResult = result.json as { documents: Array<{ type: string; pages: number[] }> };
-      const documents: SplitDocument[] = splitResult.documents.map(doc => ({
+      // Handle both wrapped and unwrapped array responses from VLM
+      // Some VLMs return { documents: [...] }, others return [...] directly
+      let docArray: Array<{ type: string; pages: number[] }>;
+
+      if (Array.isArray(result.json)) {
+        // VLM returned array directly
+        docArray = result.json as Array<{ type: string; pages: number[] }>;
+      } else if ((result.json as any)?.documents && Array.isArray((result.json as any).documents)) {
+        // VLM returned wrapped in { documents: [...] }
+        docArray = (result.json as any).documents;
+      } else {
+        throw new Error(`Split node received invalid response from VLM. Expected array or { documents: [...] }, got: ${JSON.stringify(result.json).substring(0, 200)}`);
+      }
+
+      // Build output documents - only attach schema if using legacy schemas config
+      const documents: SplitDocument[] = docArray.map(doc => ({
         type: doc.type,
-        schema: schemas[doc.type] || {},
         pages: doc.pages,
-        input: { ...input, pages: doc.pages }
+        input: { ...input, pages: doc.pages },
+        // Only attach schema if using legacy schemas/schemaRef config
+        ...(schemas && schemas[doc.type] && { schema: schemas[doc.type] })
       }));
 
       const { provider, model } = parseProviderName(config.provider.name);

@@ -1,6 +1,13 @@
-export { XAIProvider } from './xai';
-import { XAIProvider } from './xai';
-import { registerProvider } from '@doclo/providers-llm';
+// Re-export provider from the main package
+// This ensures users get the latest, feature-complete implementation
+export { XAIProvider } from '@doclo/providers-llm';
 
-// Auto-register the provider when this package is imported
-registerProvider('xai', (config) => new XAIProvider(config));
+// Re-export commonly used types for convenience
+export type {
+  ProviderConfig,
+  LLMResponse,
+  MultimodalInput,
+  UnifiedSchema,
+  ReasoningConfig,
+  LLMDerivedOptions
+} from '@doclo/providers-llm';
