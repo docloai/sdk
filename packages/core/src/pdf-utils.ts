@@ -10,25 +10,43 @@ import { base64ToArrayBuffer, uint8ArrayToBase64 } from './runtime/base64.js';
 import type { DocumentIR } from './internal/validation-utils.js';
 
 /**
+ * Extract raw base64 data from PDF input.
+ * Accepts both data URL format and raw base64 strings.
+ *
+ * @param input - PDF data URL (data:application/pdf;base64,...) or raw base64 string
+ * @returns Raw base64 string without data URL prefix
+ */
+function extractPDFBase64(input: string): string {
+  // If it's a data URL, extract the base64 part
+  const dataUrlMatch = input.match(/^data:application\/pdf;base64,(.+)$/);
+  if (dataUrlMatch) {
+    return dataUrlMatch[1];
+  }
+
+  // Otherwise assume it's raw base64
+  return input;
+}
+
+/**
  * Get the total number of pages in a PDF document
  *
- * @param dataUrl - PDF data URI in format: data:application/pdf;base64,{base64data}
+ * @param input - PDF data URL (data:application/pdf;base64,...) or raw base64 string
  * @returns Total page count
- * @throws {Error} If the input is not a valid PDF data URL
+ * @throws {Error} If the input is not valid PDF data
  *
  * @example
  * ```typescript
+ * // With data URL
  * const pageCount = await getPDFPageCount('data:application/pdf;base64,JVBERi0...');
+ *
+ * // With raw base64
+ * const pageCount = await getPDFPageCount('JVBERi0xLjQK...');
+ *
  * console.log(`PDF has ${pageCount} pages`);
  * ```
  */
-export async function getPDFPageCount(dataUrl: string): Promise<number> {
-  const base64Match = dataUrl.match(/^data:application\/pdf;base64,(.+)$/);
-  if (!base64Match) {
-    throw new Error('Invalid PDF data URL format. Expected: data:application/pdf;base64,{base64data}');
-  }
-
-  const base64Data = base64Match[1];
+export async function getPDFPageCount(input: string): Promise<number> {
+  const base64Data = extractPDFBase64(input);
   const pdfBytes = base64ToArrayBuffer(base64Data);
   const pdfDoc = await PDFDocument.load(pdfBytes);
   return pdfDoc.getPageCount();
@@ -37,10 +55,10 @@ export async function getPDFPageCount(dataUrl: string): Promise<number> {
 /**
  * Split a PDF into multiple smaller PDFs based on page ranges
  *
- * @param dataUrl - PDF data URI in format: data:application/pdf;base64,{base64data}
+ * @param input - PDF data URL (data:application/pdf;base64,...) or raw base64 string
  * @param pageRanges - Array of [startPage, endPage] tuples (1-indexed, inclusive)
  * @returns Array of PDF data URLs, one for each page range
- * @throws {Error} If the input is not a valid PDF data URL or page ranges are invalid
+ * @throws {Error} If the input is not valid PDF data or page ranges are invalid
  *
  * @example
  * ```typescript
@@ -54,16 +72,11 @@ export async function getPDFPageCount(dataUrl: string): Promise<number> {
  * ```
  */
 export async function splitPDFIntoChunks(
-  dataUrl: string,
+  input: string,
   pageRanges: Array<[number, number]>
 ): Promise<string[]> {
-  // Extract base64 data from data URL
-  const base64Match = dataUrl.match(/^data:application\/pdf;base64,(.+)$/);
-  if (!base64Match) {
-    throw new Error('Invalid PDF data URL format. Expected: data:application/pdf;base64,{base64data}');
-  }
-
-  const base64Data = base64Match[1];
+  // Extract base64 data (accepts both data URL and raw base64)
+  const base64Data = extractPDFBase64(input);
   const pdfBytes = base64ToArrayBuffer(base64Data);
 
   // Load the PDF

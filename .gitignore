@@ -61,3 +61,7 @@ tests/test-output-*.mjs
 
 # Examples (if temporary)
 examples/
+
+# Test request files
+test-*.json
+**/test-*-request.json
