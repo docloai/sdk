@@ -10,11 +10,13 @@ import type {
   NodeConfig,
   SerializableConditionalStep,
   SerializableForEachStep,
+  SerializableRouteStep,
   ExtractConfig,
   SplitConfig,
   CategorizeConfig,
   TriggerConfig,
   OutputConfig,
+  RouteConfig,
   FlowReference
 } from './serialization.js';
 import { isDebugValidation } from '@doclo/core/runtime/env';
@@ -131,6 +133,29 @@ function calculateFlowNestingDepth(flow: SerializableFlow, currentDepth: number 
             const branchDepth = calculateFlowNestingDepth(branchFlowOrRef, stepDepth + 2);
             maxDepth = Math.max(maxDepth, branchDepth);
           }
+        }
+      }
+    } else if (step.type === 'route') {
+      // Route: step → branches (obj) → branchName → flow/flowRef
+      // Type narrowing: step is SerializableRouteStep
+      const routeStep = step as SerializableRouteStep;
+      if (routeStep.branches) {
+        for (const branchFlowOrRef of Object.values(routeStep.branches)) {
+          if ('flowRef' in branchFlowOrRef) {
+            maxDepth = Math.max(maxDepth, stepDepth + 3);
+          } else {
+            const branchDepth = calculateFlowNestingDepth(branchFlowOrRef, stepDepth + 2);
+            maxDepth = Math.max(maxDepth, branchDepth);
+          }
+        }
+      }
+      // Also check 'others' branch
+      if (routeStep.others) {
+        if ('flowRef' in routeStep.others) {
+          maxDepth = Math.max(maxDepth, stepDepth + 3);
+        } else {
+          const othersDepth = calculateFlowNestingDepth(routeStep.others, stepDepth + 2);
+          maxDepth = Math.max(maxDepth, othersDepth);
         }
       }
     } else if (step.type === 'forEach') {
@@ -407,10 +432,127 @@ export function validateFlow(
           }
         }
       }
+    } else if (step.type === 'route') {
+      const routeStep = step as SerializableRouteStep;
+
+      // Validate branches exist
+      if (!routeStep.branches || typeof routeStep.branches !== 'object') {
+        errors.push({
+          type: 'invalid_config',
+          stepId,
+          message: 'Route step missing or invalid branches field'
+        });
+      } else if (Object.keys(routeStep.branches).length === 0) {
+        errors.push({
+          type: 'invalid_config',
+          stepId,
+          message: 'Route step must have at least one branch'
+        });
+      }
+
+      // Validate config.branches match step.branches
+      if (routeStep.config?.branches && routeStep.branches) {
+        for (const branchName of Object.keys(routeStep.config.branches)) {
+          if (!routeStep.branches[branchName]) {
+            errors.push({
+              type: 'invalid_config',
+              stepId,
+              message: `Branch "${branchName}" defined in config but missing flow definition`
+            });
+          }
+        }
+
+        // Validate MIME type patterns
+        for (const [branchName, branchConfig] of Object.entries(routeStep.config.branches)) {
+          if (!branchConfig.mimeTypes || branchConfig.mimeTypes.length === 0) {
+            errors.push({
+              type: 'invalid_config',
+              stepId: `${stepId}.${branchName}`,
+              message: `Branch "${branchName}" has no MIME types defined`
+            });
+          } else {
+            // Validate MIME type format
+            for (const mimeType of branchConfig.mimeTypes) {
+              // MIME types should contain '/' or be a glob pattern ending with '/*'
+              if (!mimeType.includes('/')) {
+                errors.push({
+                  type: 'invalid_config',
+                  stepId: `${stepId}.${branchName}`,
+                  message: `Invalid MIME type pattern: "${mimeType}". Expected format: "type/subtype" or "type/*"`
+                });
+              }
+            }
+          }
+        }
+      }
+
+      // Recursively validate each branch flow
+      if (routeStep.branches) {
+        for (const [branchName, branchFlowOrRef] of Object.entries(routeStep.branches)) {
+          if ('flowRef' in branchFlowOrRef) {
+            // Validate flowRef format
+            const flowRef = (branchFlowOrRef as FlowReference).flowRef;
+            if (typeof flowRef !== 'string' || flowRef.trim() === '') {
+              errors.push({
+                type: 'invalid_config',
+                stepId: `${stepId}.${branchName}`,
+                message: `Branch "${branchName}": flowRef must be a non-empty string`
+              });
+            }
+          } else {
+            // Inline flow - validate recursively
+            const branchResult = validateFlow(branchFlowOrRef as SerializableFlow, options);
+            for (const error of branchResult.errors) {
+              errors.push({
+                ...error,
+                stepId: `${stepId}.${branchName}`,
+                message: `Branch "${branchName}": ${error.message}`
+              });
+            }
+            for (const warning of branchResult.warnings) {
+              warnings.push({
+                ...warning,
+                stepId: `${stepId}.${branchName}`,
+                message: `Branch "${branchName}": ${warning.message}`
+              });
+            }
+          }
+        }
+      }
+
+      // Validate others branch if present
+      if (routeStep.others) {
+        if ('flowRef' in routeStep.others) {
+          const flowRef = (routeStep.others as FlowReference).flowRef;
+          if (typeof flowRef !== 'string' || flowRef.trim() === '') {
+            errors.push({
+              type: 'invalid_config',
+              stepId: `${stepId}.others`,
+              message: 'Others branch flowRef must be a non-empty string'
+            });
+          }
+        } else {
+          const othersResult = validateFlow(routeStep.others as SerializableFlow, options);
+          for (const error of othersResult.errors) {
+            errors.push({
+              ...error,
+              stepId: `${stepId}.others`,
+              message: `Others branch: ${error.message}`
+            });
+          }
+          for (const warning of othersResult.warnings) {
+            warnings.push({
+              ...warning,
+              stepId: `${stepId}.others`,
+              message: `Others branch: ${warning.message}`
+            });
+          }
+        }
+      }
     }
 
     // Validate node type
-    const validNodeTypes = ['parse', 'extract', 'split', 'categorize', 'trigger', 'output'];
+    const validNodeTypes = ['parse', 'extract', 'split', 'categorize', 'trigger', 'output', 'route'];
     if (!step.nodeType || !validNodeTypes.includes(step.nodeType)) {
       errors.push({
         type: 'invalid_config',
@@ -438,8 +580,8 @@ export function validateFlow(
       return 'providerRef' in cfg && typeof cfg.providerRef === 'string';
     };
 
-    // Validate provider reference (not applicable for trigger and output nodes)
-    if (step.nodeType !== 'trigger' && step.nodeType !== 'output') {
+    // Validate provider reference (not applicable for trigger, output, and route nodes)
+    if (step.nodeType !== 'trigger' && step.nodeType !== 'output' && step.nodeType !== 'route') {
       if (!hasProviderRef(config)) {
         errors.push({
           type: 'missing_provider',

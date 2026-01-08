@@ -65,3 +65,7 @@ examples/
 # Test request files
 test-*.json
 **/test-*-request.json
+
+# Claude Mind memory files
+*.mv2
+.claude/

@@ -11,7 +11,7 @@
 import type { NodeDef, VLMProvider, OCRProvider, JSONSchemaNode, FlowContext, FlowInput } from "@doclo/core";
 import { createFlow, type FlowOptions, type Flow, type BuiltFlow } from './flow-builder.js';
 import { parse, extract, split, categorize, trigger, output } from '@doclo/nodes';
-import { createConditionalCompositeNode, createForEachCompositeNode } from './composite-nodes.js';
+import { createConditionalCompositeNode, createForEachCompositeNode, createRouteCompositeNode } from './composite-nodes.js';
 
 /**
  * Union type for providers used in flow serialization
@@ -67,7 +67,8 @@ export type SerializableFlow = {
 export type SerializableStep =
   | SerializableStandardStep
   | SerializableConditionalStep
-  | SerializableForEachStep;
+  | SerializableForEachStep
+  | SerializableRouteStep;
 
 /**
  * Standard sequential step
@@ -116,6 +117,59 @@ export type SerializableForEachStep = {
   nodeType: 'split';
   config: SplitConfig;
   itemFlow: SerializableFlow | FlowReference;
+};
+
+/**
+ * Route branch configuration
+ * Maps multiple MIME types to a single branch
+ */
+export type RouteBranchConfig = {
+  /**
+   * MIME types that route to this branch.
+   * Supports exact matches (e.g., 'application/pdf')
+   * and glob patterns (e.g., 'image/*')
+   */
+  mimeTypes: string[];
+  /**
+   * Optional description for documentation/debugging
+   */
+  description?: string;
+};
+
+/**
+ * Route step configuration
+ * Routes documents based on detected MIME type (no provider required)
+ */
+export type RouteConfig = {
+  type: 'route';
+  /**
+   * Branch definitions mapping branch names to MIME type configurations.
+   * Order matters for matching - first matching branch wins.
+   */
+  branches: Record<string, RouteBranchConfig>;
+};
+
+/**
+ * Route step (MIME-based routing + branches)
+ *
+ * Unlike conditional (which uses VLM categorization), route uses
+ * deterministic MIME detection from magic bytes - no provider needed.
+ *
+ * Branches can be either inline flows or references to separate flows.
+ * Use references to avoid hitting database JSON nesting limits.
+ */
+export type SerializableRouteStep = {
+  type: 'route';
+  id: string;
+  name?: string;
+  nodeType: 'route';
+  config: RouteConfig;
+  branches: Record<string, SerializableFlow | FlowReference>;
+  /**
+   * Fallback branch for unmatched MIME types.
+   * If not provided and no branch matches, throws error with details.
+   */
+  others?: SerializableFlow | FlowReference;
 };
 
 /**
@@ -383,6 +437,18 @@ export function buildFlowFromConfig(
         stepId: step.id,
         splitConfig: step.config,
         itemFlow: step.itemFlow,
+        providers,
+        flows: flows || {}
+      });
+      flow = flow.step(step.id, node, step.name);
+
+    } else if (step.type === 'route') {
+      // Create composite node that handles MIME detection + branch routing
+      const node = createRouteCompositeNode({
+        stepId: step.id,
+        routeConfig: step.config,
+        branches: step.branches,
+        others: step.others,
         providers,
         flows: flows || {}
       });

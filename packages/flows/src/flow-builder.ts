@@ -199,6 +199,21 @@ function normalizeFlowInput(input: any): any {
 }
 
 /**
+ * Filters out internal artifacts (prefixed with __) from the result.
+ * Internal artifacts like __flowInput and __originalFlowInput are used
+ * during execution but should not be exposed in the final result.
+ */
+function filterInternalArtifacts(artifacts: Record<string, any>): Record<string, any> {
+  const filtered: Record<string, any> = {};
+  for (const [key, value] of Object.entries(artifacts)) {
+    if (!key.startsWith('__')) {
+      filtered[key] = value;
+    }
+  }
+  return filtered;
+}
+
+/**
  * Options for creating a flow
  */
 export interface FlowOptions {
@@ -1484,7 +1499,7 @@ export class Flow<TInput = any, TOutput = any> {
             results: flowResults,
             metrics,
             aggregated: aggregateMetrics(metrics),
-            artifacts
+            artifacts: filterInternalArtifacts(artifacts)
           };
         }
       } catch (error) {
@@ -1583,7 +1598,7 @@ export class Flow<TInput = any, TOutput = any> {
           outputs,
           metrics,
           aggregated: aggregateMetrics(metrics),
-          artifacts
+          artifacts: filterInternalArtifacts(artifacts)
         };
       } else {
         // Multiple output nodes - return outputs object
@@ -1592,7 +1607,7 @@ export class Flow<TInput = any, TOutput = any> {
           outputs,
           metrics,
           aggregated: aggregateMetrics(metrics),
-          artifacts
+          artifacts: filterInternalArtifacts(artifacts)
         };
       }
     } else {
@@ -1601,7 +1616,7 @@ export class Flow<TInput = any, TOutput = any> {
         output: currentData,
         metrics,
         aggregated: aggregateMetrics(metrics),
-        artifacts
+        artifacts: filterInternalArtifacts(artifacts)
       };
     }
 
