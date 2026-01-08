@@ -21,6 +21,7 @@ node_modules
 dist/
 *.tsbuildinfo
 .turbo/
+*.tgz
 
 # production
 /build
@@ -58,6 +59,10 @@ clean-*.mjs
 
 # Temporary test outputs
 tests/test-output-*.mjs
+
+# Generate package test files and outputs
+packages/generate/test-*.mjs
+packages/generate/test-output*
 
 # Examples (if temporary)
 examples/
