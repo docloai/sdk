@@ -45,7 +45,7 @@ import {
   executeHook,
   generateSpanId,
 } from "@doclo/core/observability";
-import { PROMPT_REGISTRY, renderPrompt } from "@doclo/prompts";
+import { PROMPT_REGISTRY, renderPrompt, type RenderedPrompt } from "@doclo/prompts";
 import { SCHEMA_REGISTRY } from "@doclo/schemas";
 
 /**
@@ -270,6 +270,60 @@ function isEmptyResult(value: unknown): boolean {
   if (typeof value !== 'object') return false;
   if (Array.isArray(value)) return value.length === 0;
   return Object.keys(value as object).length === 0;
+}
+
+/**
+ * Image input type for prompt extraction
+ */
+interface ExtractedImage {
+  url?: string;
+  base64?: string;
+  mimeType: 'image/jpeg' | 'image/png' | 'image/webp' | 'image/gif';
+}
+
+/**
+ * Extract text and images from rendered prompt messages.
+ * Fixes the bug where only the first content item was extracted.
+ */
+function extractPromptContent(rendered: RenderedPrompt): { text: string; images: ExtractedImage[] } {
+  const texts: string[] = [];
+  const images: ExtractedImage[] = [];
+
+  for (const message of rendered.messages) {
+    for (const content of message.content) {
+      if (content.type === 'text') {
+        texts.push(content.text);
+      } else if (content.type === 'image_url') {
+        const url = content.image_url.url;
+        if (url.startsWith('data:')) {
+          // Parse data URL: data:image/png;base64,ABC123...
+          const commaIndex = url.indexOf(',');
+          if (commaIndex !== -1) {
+            const header = url.substring(0, commaIndex);
+            const data = url.substring(commaIndex + 1);
+            const mimeMatch = header.match(/data:([^;]+)/);
+            const mimeType = mimeMatch?.[1] || 'image/png';
+            images.push({
+              base64: data,
+              mimeType: mimeType as ExtractedImage['mimeType']
+            });
+          }
+        } else {
+          // Regular URL - detect MIME from extension or default to png
+          let mimeType: ExtractedImage['mimeType'] = 'image/png';
+          if (url.includes('.jpg') || url.includes('.jpeg')) mimeType = 'image/jpeg';
+          else if (url.includes('.webp')) mimeType = 'image/webp';
+          else if (url.includes('.gif')) mimeType = 'image/gif';
+          images.push({ url, mimeType });
+        }
+      }
+    }
+  }
+
+  return {
+    text: texts.join('\n\n'),
+    images
+  };
 }
 
 /**
@@ -1137,6 +1191,7 @@ export function parse(config: ParseNodeConfig) {
         // Build schema and prompt based on format
         let schema: any;
         let promptText: string;
+        let promptImages: ExtractedImage[] = [];
 
         if (config.promptRef) {
           // Use prompt from registry
@@ -1235,10 +1290,9 @@ export function parse(config: ParseNodeConfig) {
             variables,
             additionalInstructions: config.additionalInstructions
           });
-          promptText = rendered.messages.map((msg: any) => {
-            const content = msg.content?.[0];
-            return content?.text ?? content ?? '';
-          }).join('\n\n');
+          const extracted = extractPromptContent(rendered);
+          promptText = extracted.text;
+          promptImages = extracted.images;
 
           // Auto-inject format instruction if not present in rendered prompt
           // This ensures UI format selection always takes effect
@@ -1355,10 +1409,16 @@ export function parse(config: ParseNodeConfig) {
         const detectedType = detectDocumentType(dataUrl);
         const isPDF = detectedType === 'application/pdf';
 
+        // Merge prompt images with document image (prompt images first for context)
+        const documentImages = dataUrl && !isPDF
+          ? [{ base64: dataUrl, mimeType: detectedType as ExtractedImage['mimeType'] }]
+          : [];
+        const allImages = [...promptImages, ...documentImages];
+
         const result = await vlm.completeJson({
           prompt: {
             text: promptText,
-            images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
+            images: allImages.length > 0 ? allImages : undefined,
             pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
           },
           schema,
@@ -1875,6 +1935,7 @@ export function categorize(config: CategorizeNodeConfig) {
 
         // Build prompt
         let prompt: string;
+        let promptImages: ExtractedImage[] = [];
 
         if (config.promptRef) {
           // Use prompt from registry
@@ -1914,18 +1975,9 @@ export function categorize(config: CategorizeNodeConfig) {
             additionalInstructions: config.additionalInstructions
           });
           console.log('[DEBUG] categorize: rendered prompt messages', JSON.stringify(rendered.messages, null, 2));
-          prompt = rendered.messages.map((msg: any) => {
-            if (!msg) {
-              console.log('[DEBUG] categorize: msg is undefined');
-              return '';
-            }
-            const content = msg.content?.[0];
-            if (!content) {
-              console.log('[DEBUG] categorize: content is undefined for msg', msg);
-              return '';
-            }
-            return content?.text ?? content ?? '';
-          }).join('\n\n');
+          const extracted = extractPromptContent(rendered);
+          prompt = extracted.text;
+          promptImages = extracted.images;
 
         } else {
           // Fall back to default prompt
@@ -1939,12 +1991,23 @@ export function categorize(config: CategorizeNodeConfig) {
           prompt += `\n\n${text}`;
         }
 
-        result = await config.provider.completeJson({
-          prompt,
-          schema,
-          reasoning: config.reasoning,
-          max_tokens: config.maxTokens
-        });
+        // Use multimodal input if prompt has images, otherwise plain text
+        if (promptImages.length > 0) {
+          // Cast to VLMProvider for multimodal input
+          result = await (config.provider as VLMProvider).completeJson({
+            prompt: { text: prompt, images: promptImages },
+            schema,
+            reasoning: config.reasoning,
+            max_tokens: config.maxTokens
+          });
+        } else {
+          result = await config.provider.completeJson({
+            prompt,
+            schema,
+            reasoning: config.reasoning,
+            max_tokens: config.maxTokens
+          });
+        }
       } else {
         // FlowInput - needs VLM
         if (!isVLMProvider(config.provider)) {
@@ -1961,6 +2024,7 @@ export function categorize(config: CategorizeNodeConfig) {
 
         // Build prompt
         let promptText: string;
+        let promptImages: ExtractedImage[] = [];
 
         if (config.promptRef) {
           // Use prompt from registry
@@ -1999,18 +2063,9 @@ export function categorize(config: CategorizeNodeConfig) {
             additionalInstructions: config.additionalInstructions
           });
           console.log('[DEBUG] categorize (FlowInput): rendered prompt messages', JSON.stringify(rendered.messages, null, 2));
-          promptText = rendered.messages.map((msg: any) => {
-            if (!msg) {
-              console.log('[DEBUG] categorize (FlowInput): msg is undefined');
-              return '';
-            }
-            const content = msg.content?.[0];
-            if (!content) {
-              console.log('[DEBUG] categorize (FlowInput): content is undefined for msg', msg);
-              return '';
-            }
-            return content?.text ?? content ?? '';
-          }).join('\n\n');
+          const extracted = extractPromptContent(rendered);
+          promptText = extracted.text;
+          promptImages = extracted.images;
 
         } else {
           // Fall back to default prompt
@@ -2023,13 +2078,19 @@ export function categorize(config: CategorizeNodeConfig) {
           }
         }
 
+        // Merge prompt images with document image (prompt images first for context)
+        const documentImages = dataUrl && !isPDF
+          ? [{ base64: dataUrl, mimeType: detectedType as ExtractedImage['mimeType'] }]
+          : [];
+        const allImages = [...promptImages, ...documentImages];
+
         console.log('[DEBUG] categorize (FlowInput): calling provider.completeJson with prompt length:', promptText?.length);
         console.log('[DEBUG] categorize (FlowInput): schema:', JSON.stringify(schema));
         try {
           result = await config.provider.completeJson({
             prompt: {
               text: promptText,
-              images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
+              images: allImages.length > 0 ? allImages : undefined,
               pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
             },
             schema,
@@ -2479,7 +2540,7 @@ export function extract<T = any>(config: ExtractNodeConfig<T>) {
     let sourceIR: DocumentIR | null = ir;
 
     // Prepared config for provider call
-    let preparedPrompt: string | { text: string; images?: any[]; pdfs?: any[] };
+    let preparedPrompt: string | { text: string; images?: ExtractedImage[]; pdfs?: any[] };
     let extractionSchema: any;
 
     if (effectiveMode === 'ir+source' && ir && source) {
@@ -2600,6 +2661,7 @@ Extract the structured data now:`;
 
       // Build prompt - check for promptRef first
       let prompt: string;
+      let promptImages: ExtractedImage[] = [];
 
       if (config.promptRef) {
         // Use prompt from registry
@@ -2641,11 +2703,10 @@ Extract the structured data now:`;
           additionalInstructions: config.additionalInstructions
         });
 
-        // Convert rendered messages to single prompt text
-        prompt = rendered.messages.map((msg: any) => {
-          const content = msg.content?.[0];
-          return content?.text ?? content ?? '';
-        }).join('\n\n');
+        // Extract text and images from rendered messages
+        const extracted = extractPromptContent(rendered);
+        prompt = extracted.text;
+        promptImages = extracted.images;
 
       } else {
         // Fall back to default prompt building
@@ -2698,7 +2759,10 @@ Extract the structured data now:`;
         prompt += `\n\nDOCUMENT TEXT:\n${documentText}\n\nExtract the structured data now:`;
       }
 
-      preparedPrompt = prompt;
+      // Use multimodal input if prompt has images, otherwise plain text
+      preparedPrompt = promptImages.length > 0
+        ? { text: prompt, images: promptImages }
+        : prompt;
 
     } else if (source) {
       // === SOURCE-ONLY PATH (VLM direct extraction) ===
@@ -2725,6 +2789,7 @@ Extract the structured data now:`;
 
       // Build VLM prompt - check for promptRef first
       let promptText: string;
+      let promptImages: ExtractedImage[] = [];
 
       if (config.promptRef) {
         // Use prompt from registry
@@ -2764,11 +2829,10 @@ Extract the structured data now:`;
           additionalInstructions: config.additionalInstructions
         });
 
-        // Convert rendered messages to single prompt text
-        promptText = rendered.messages.map((msg: any) => {
-          const content = msg.content?.[0];
-          return content?.text ?? content ?? '';
-        }).join('\n\n');
+        // Extract text and images from rendered messages
+        const extracted = extractPromptContent(rendered);
+        promptText = extracted.text;
+        promptImages = extracted.images;
 
       } else {
         // Fall back to default VLM prompt
@@ -2795,9 +2859,15 @@ Extract the structured data now:`;
         }
       }
 
+      // Merge prompt images with document image (prompt images first for context)
+      const documentImages = dataUrl && !isPDF
+        ? [{ base64: dataUrl, mimeType: detectedType as ExtractedImage['mimeType'] }]
+        : [];
+      const allImages = [...promptImages, ...documentImages];
+
       preparedPrompt = {
         text: promptText,
-        images: dataUrl && !isPDF ? [{ base64: dataUrl, mimeType: detectedType as any }] : undefined,
+        images: allImages.length > 0 ? allImages : undefined,
         pdfs: dataUrl && isPDF ? [{ base64: dataUrl }] : undefined
       };
     } else {

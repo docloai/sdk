@@ -290,6 +290,14 @@ export class XAIProvider implements LLMProvider {
   }
 
   private async buildMessages(input: MultimodalInput): Promise<any[]> {
+    const messages: any[] = [];
+
+    // Add system message if provided
+    if (input.systemPrompt) {
+      messages.push({ role: "system", content: input.systemPrompt });
+    }
+
+    // Build user message content array
     const content: any[] = [];
 
     // Add text
@@ -338,7 +346,8 @@ export class XAIProvider implements LLMProvider {
       }
     }
 
-    return [{ role: "user", content }];
+    messages.push({ role: "user", content });
+    return messages;
   }
 
   /**

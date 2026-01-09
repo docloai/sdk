@@ -294,6 +294,14 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   private buildMessages(input: MultimodalInput): any[] {
+    const messages: any[] = [];
+
+    // Add system message if provided
+    if (input.systemPrompt) {
+      messages.push({ role: "system", content: input.systemPrompt });
+    }
+
+    // Build user message content array
     const content: any[] = [];
 
     // Add text
@@ -342,7 +350,8 @@ export class OpenAIProvider implements LLMProvider {
       }
     }
 
-    return [{ role: "user", content }];
+    messages.push({ role: "user", content });
+    return messages;
   }
 
   /**

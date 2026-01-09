@@ -134,7 +134,9 @@ export class AnthropicProvider implements LLMProvider {
     const requestBody: any = {
       model: this.config.model,
       max_tokens: params.max_tokens || 4096,
-      messages
+      messages,
+      // Native Anthropic API uses separate system parameter (text-only)
+      ...(enhancedInput.systemPrompt && { system: enhancedInput.systemPrompt })
     };
 
     if (mode === 'relaxed') {
@@ -198,7 +200,7 @@ export class AnthropicProvider implements LLMProvider {
       const useNewStructuredOutputs = this.supportsNewStructuredOutputs();
 
       // Use OpenRouter with OpenAI-compatible format
-      const openRouterRequest = this.translateToOpenRouterFormat(messages, params.schema, mode, params.max_tokens, params.reasoning);
+      const openRouterRequest = this.translateToOpenRouterFormat(messages, params.schema, mode, params.max_tokens, params.reasoning, enhancedInput.systemPrompt);
 
       // Debug: Log request body to verify cache_control is present
       if (process.env.DEBUG_PROVIDERS) {
@@ -467,17 +469,24 @@ export class AnthropicProvider implements LLMProvider {
     schema: any | undefined,
     mode: import("../types").JsonMode,
     max_tokens?: number,
-    reasoning?: import("../types").ReasoningConfig
+    reasoning?: import("../types").ReasoningConfig,
+    systemPrompt?: string
   ): any {
     // Check if model supports new structured outputs
     const useNewStructuredOutputs = this.supportsNewStructuredOutputs();
 
-    // Add system message for JSON enforcement
+    // Build system message: user's system prompt + JSON enforcement instructions
+    const jsonInstructions = mode === 'strict'
+      ? "You must respond ONLY with valid JSON that matches the provided schema. Do not include any markdown formatting, explanations, or additional text."
+      : "You must respond ONLY with valid JSON. Do not include any markdown formatting, explanations, or additional text.";
+
+    const systemContent = systemPrompt
+      ? `${systemPrompt}\n\n${jsonInstructions}`
+      : `You are a data extraction assistant. ${jsonInstructions}`;
+
     const systemMessage = {
       role: "system",
-      content: mode === 'strict'
-        ? "You are a data extraction assistant. You must respond ONLY with valid JSON that matches the provided schema. Do not include any markdown formatting, explanations, or additional text."
-        : "You are a data extraction assistant. You must respond ONLY with valid JSON. Do not include any markdown formatting, explanations, or additional text."
+      content: systemContent
     };
 
     // Prepare messages array

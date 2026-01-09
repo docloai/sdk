@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-llm",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Core LLM provider utilities, types, and schema translation for Doclo SDK",
   "license": "MIT",
   "repository": {
@@ -38,7 +38,7 @@
     "@doclo/providers-anthropic": "^0.1.1",
     "@doclo/providers-google": "^0.1.1",
     "@doclo/providers-xai": "^0.1.1",
-    "@doclo/providers-generic-or": "^0.1.0"
+    "@doclo/providers-generic-or": "^0.1.1"
   },
   "peerDependenciesMeta": {
     "@doclo/providers-openai": {

@@ -75,6 +75,8 @@ export interface MultimodalInput {
   text?: string;
   images?: ImageInput[];
   pdfs?: PDFInput[];
+  /** Optional system message (text-only, prepended to conversation) */
+  systemPrompt?: string;
 }
 
 /** Response metrics */

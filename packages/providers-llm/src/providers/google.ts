@@ -210,14 +210,18 @@ export class GoogleProvider implements LLMProvider {
     const contents = await this.buildContents(enhancedInput);
 
     // Build request
-    const requestBody: GeminiRequestBody = {
+    const requestBody: GeminiRequestBody & { systemInstruction?: { parts: { text: string }[] } } = {
       contents,
       generationConfig: {
         // Google's native responseSchema has strict validation issues with complex schemas.
         // Use JSON mode without responseSchema - schema is already in the prompt via combineSchemaAndUserPrompt.
         // See: https://ubaidullahmomer.medium.com/why-google-geminis-response-schema-isn-t-ready-for-complex-json-46f35c3aaaea
         responseMimeType: "application/json"
-      }
+      },
+      // Native Gemini API uses systemInstruction with parts array (text-only)
+      ...(enhancedInput.systemPrompt && {
+        systemInstruction: { parts: [{ text: enhancedInput.systemPrompt }] }
+      })
     };
 
     if (process.env.DEBUG_PROVIDERS) {
@@ -241,7 +245,7 @@ export class GoogleProvider implements LLMProvider {
 
     if (this.config.via === 'openrouter') {
       // Use OpenRouter endpoint with OpenAI-compatible format
-      const openRouterRequest = this.translateToOpenRouterFormat(contents, mode, params.max_tokens, params.reasoning);
+      const openRouterRequest = this.translateToOpenRouterFormat(contents, mode, params.max_tokens, params.reasoning, enhancedInput.systemPrompt);
       response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -401,10 +405,16 @@ export class GoogleProvider implements LLMProvider {
     contents: GeminiContent[],
     mode: JsonMode,
     max_tokens?: number,
-    reasoning?: ReasoningConfig
+    reasoning?: ReasoningConfig,
+    systemPrompt?: string
   ): OpenRouterRequest {
     // Convert Gemini contents format to OpenAI messages format
     const messages: OpenRouterMessage[] = [];
+
+    // Add system message if provided
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
 
     for (const content of contents) {
       if (content.role === 'user') {
