@@ -208,6 +208,9 @@ export type ParseConfig = {
     onTie?: 'random' | 'fail' | 'retry';
   };
   maxTokens?: number;
+  promptRef?: string;                     // Reference to prompt asset (e.g., "default-parse@1.0.0")
+  promptVariables?: Record<string, any>;  // Variables to pass to the prompt template
+  additionalInstructions?: string;        // Additional instructions to append to the prompt
 };
 
 export type ExtractConfig = {
@@ -225,6 +228,9 @@ export type ExtractConfig = {
     max_tokens?: number;
   };
   maxTokens?: number;
+  promptRef?: string;                     // Reference to prompt asset (e.g., "default-extraction@1.0.0")
+  promptVariables?: Record<string, any>;  // Variables to pass to the prompt template
+  additionalInstructions?: string;        // Additional instructions to append to the prompt
 };
 
 export type SplitConfig = {
@@ -258,7 +264,9 @@ export type CategorizeConfig = {
     strategy?: 'majority' | 'unanimous';
     onTie?: 'random' | 'fail' | 'retry';
   };
-  promptRef?: string;  // Reference to prompt asset (e.g., "default-categorize@1.0.0")
+  promptRef?: string;                     // Reference to prompt asset (e.g., "default-categorize@1.0.0")
+  promptVariables?: Record<string, any>;  // Variables to pass to the prompt template
+  additionalInstructions?: string;        // Additional instructions to append to the prompt
   maxTokens?: number;
 };
 
@@ -628,7 +636,10 @@ function createNodeFromConfig(
       return parse({
         provider: provider as OCRProvider,
         consensus: cfg.consensus,
-        maxTokens: cfg.maxTokens
+        maxTokens: cfg.maxTokens,
+        promptRef: cfg.promptRef,
+        promptVariables: cfg.promptVariables,
+        additionalInstructions: cfg.additionalInstructions
       });
     }
 
@@ -640,7 +651,10 @@ function createNodeFromConfig(
         schema: cfg.schema,
         consensus: cfg.consensus,
         reasoning: cfg.reasoning,
-        maxTokens: cfg.maxTokens
+        maxTokens: cfg.maxTokens,
+        promptRef: cfg.promptRef,
+        promptVariables: cfg.promptVariables,
+        additionalInstructions: cfg.additionalInstructions
       });
     }
 
@@ -666,7 +680,10 @@ function createNodeFromConfig(
         provider: provider as VLMProvider,
         categories: cfg.categories,
         consensus: cfg.consensus,
-        maxTokens: cfg.maxTokens
+        maxTokens: cfg.maxTokens,
+        promptRef: cfg.promptRef,
+        promptVariables: cfg.promptVariables,
+        additionalInstructions: cfg.additionalInstructions
       });
     }
 
