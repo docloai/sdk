@@ -8,6 +8,7 @@ import type {
   ResourceLimits,
   LLMDerivedOptions
 } from "../types";
+import { calculateCacheSavings } from "../types";
 import { SchemaTranslator } from "../schema-translator";
 import { combineSchemaAndUserPrompt, combineSchemaUserAndDerivedPrompts } from "../schema-prompt-formatter";
 import { extractMetadataFromResponse, shouldExtractMetadata } from "../metadata-extractor";
@@ -284,8 +285,14 @@ export class AnthropicProvider implements LLMProvider {
       costUSD = data.usage?.total_cost ?? data.usage?.cost;
 
       // Extract prompt caching metrics (OpenRouter/Anthropic)
-      const cacheCreationInputTokens = data.usage?.cache_creation_input_tokens;
-      const cacheReadInputTokens = data.usage?.cache_read_input_tokens;
+      // OpenRouter uses prompt_tokens_details.cached_tokens and .cache_write_tokens
+      // Native Anthropic uses cache_creation_input_tokens and cache_read_input_tokens
+      const cacheCreationInputTokens =
+        data.usage?.cache_creation_input_tokens ??
+        data.usage?.prompt_tokens_details?.cache_write_tokens;
+      const cacheReadInputTokens =
+        data.usage?.cache_read_input_tokens ??
+        data.usage?.prompt_tokens_details?.cached_tokens;
 
       // Debug: Log usage fields if DEBUG_PROVIDERS is set
       if (process.env.DEBUG_PROVIDERS) {
@@ -299,6 +306,7 @@ export class AnthropicProvider implements LLMProvider {
       const latencyMs = Date.now() - startTime;
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'anthropic');
+      const cacheSavingsPercent = calculateCacheSavings(baseProvider, inputTokens, cacheReadInputTokens);
 
       // Extract metadata if derived options were enabled
       const { json: cleanJson, metadata } = extractMetadata
@@ -317,7 +325,8 @@ export class AnthropicProvider implements LLMProvider {
           provider: baseProvider,  // Base provider (e.g., "anthropic" from "anthropic/claude-...")
           model: this.config.model,
           cacheCreationInputTokens,
-          cacheReadInputTokens
+          cacheReadInputTokens,
+          cacheSavingsPercent
         },
         reasoning,
         reasoning_details,
@@ -475,6 +484,10 @@ export class AnthropicProvider implements LLMProvider {
     // Check if model supports new structured outputs
     const useNewStructuredOutputs = this.supportsNewStructuredOutputs();
 
+    // Check if caching is enabled (Anthropic defaults to false due to write costs)
+    const cachingEnabled = this.config.caching?.enabled === true;
+    const cacheTTL = this.config.caching?.ttl || '5m';
+
     // Build system message: user's system prompt + JSON enforcement instructions
     const jsonInstructions = mode === 'strict'
       ? "You must respond ONLY with valid JSON that matches the provided schema. Do not include any markdown formatting, explanations, or additional text."
@@ -484,9 +497,20 @@ export class AnthropicProvider implements LLMProvider {
       ? `${systemPrompt}\n\n${jsonInstructions}`
       : `You are a data extraction assistant. ${jsonInstructions}`;
 
-    const systemMessage = {
+    // Build system message with optional cache_control
+    // Anthropic caching requires explicit opt-in due to write costs (1.25x for 5m, 2x for 1h)
+    const systemMessage: any = {
       role: "system",
-      content: systemContent
+      content: cachingEnabled
+        ? [{
+            type: "text",
+            text: systemContent,
+            cache_control: {
+              type: "ephemeral",
+              ...(cacheTTL === '1h' && { ttl: "1h" })
+            }
+          }]
+        : systemContent
     };
 
     // Prepare messages array
@@ -739,30 +763,54 @@ export class AnthropicProvider implements LLMProvider {
         }
       }
 
-      // Add text last with cache_control if there's media
+      // Add text last with optional cache_control if there's media
       // According to OpenRouter docs, cache_control can only be on text blocks
       // This caches all the images/PDFs that came before it
+      // Note: Anthropic caching requires explicit opt-in due to write costs
+      const cachingEnabled = this.config.caching?.enabled === true;
+      const cacheTTL = this.config.caching?.ttl || '5m';
+
       if (hasMedia) {
-        // Always add a text block with cache_control when we have media
+        // Always add a text block when we have media
         // Use provided text or a default instruction
         const textContent = input.text || "Extract the requested information from the document.";
 
         if (process.env.DEBUG_PROVIDERS) {
-          console.log('[AnthropicProvider.buildMessages] Adding text block with cache_control');
+          console.log('[AnthropicProvider.buildMessages] Adding text block' + (cachingEnabled ? ' with cache_control' : ''));
           console.log('  textContent:', textContent);
+          console.log('  cachingEnabled:', cachingEnabled);
         }
 
-        content.push({
+        const textBlock: any = {
           type: "text",
-          text: textContent,
-          cache_control: { type: "ephemeral" }
-        });
+          text: textContent
+        };
+
+        // Only add cache_control if caching is explicitly enabled
+        if (cachingEnabled) {
+          textBlock.cache_control = {
+            type: "ephemeral",
+            ...(cacheTTL === '1h' && { ttl: "1h" })
+          };
+        }
+
+        content.push(textBlock);
       } else if (input.text) {
-        // No media, just add text without caching
-        content.push({
+        // No media - still add cache_control to user text for better cache utilization
+        // OpenRouter/Anthropic caching works best when cache_control is on content blocks
+        const textBlock: any = {
           type: "text",
           text: input.text
-        });
+        };
+
+        if (cachingEnabled) {
+          textBlock.cache_control = {
+            type: "ephemeral",
+            ...(cacheTTL === '1h' && { ttl: "1h" })
+          };
+        }
+
+        content.push(textBlock);
       }
     } else {
       // Native Anthropic API format

@@ -36,6 +36,27 @@ export interface ResourceLimits {
   maxJsonDepth?: number;
 }
 
+/** Caching configuration for prompt caching */
+export interface CachingConfig {
+  /**
+   * Enable/disable prompt caching.
+   * Default varies by provider:
+   * - Anthropic: false (cache writes cost 1.25x-2x, opt-in)
+   * - OpenAI/Google/XAI/DeepSeek: true (automatic, free)
+   */
+  enabled?: boolean;
+  /**
+   * Cache TTL for providers that support it (Anthropic only).
+   * - '5m': 5-minute TTL, cache writes cost 1.25x (default)
+   * - '1h': 1-hour TTL, cache writes cost 2x
+   *
+   * Break-even: ~1.4 reads/write (5m) or ~2.2 reads/write (1h).
+   * For high-frequency flows (100+ docs/hr with same schema), caching
+   * is almost always cost-effective despite the write cost.
+   */
+  ttl?: '5m' | '1h';
+}
+
 /** Provider configuration */
 export interface ProviderConfig {
   provider: ProviderType;
@@ -44,6 +65,8 @@ export interface ProviderConfig {
   apiKey: string;
   baseUrl?: string;  // for custom endpoints
   limits?: ResourceLimits;  // optional override of security limits
+  /** Optional caching configuration for prompt caching */
+  caching?: CachingConfig;
 }
 
 /** Fallback configuration */
@@ -88,9 +111,13 @@ export interface ResponseMetrics {
   attemptNumber: number;
   provider: string;
   model: string;
-  // Prompt caching metrics (OpenRouter/Anthropic)
+  // Prompt caching metrics
+  /** Tokens written to cache (Anthropic only - costs 1.25x-2x) */
   cacheCreationInputTokens?: number;
+  /** Tokens read from cache (all providers - significant cost savings) */
   cacheReadInputTokens?: number;
+  /** Calculated cache savings percentage (0-100) based on provider discount rates */
+  cacheSavingsPercent?: number;
   // HTTP metadata (for observability)
   httpStatusCode?: number;
   httpMethod?: string;
@@ -258,4 +285,51 @@ export interface CircuitBreakerState {
   consecutiveFailures: number;
   lastFailureTime?: number;
   isOpen: boolean;
+}
+
+/**
+ * Provider-specific cache discount rates.
+ * These represent the percentage savings on cached token reads.
+ */
+const CACHE_DISCOUNT_RATES: Record<string, number> = {
+  anthropic: 0.90,  // 90% discount on cached reads (0.1x price)
+  openai: 0.50,     // 50% discount
+  google: 0.75,     // 75% discount (0.25x price)
+  'x-ai': 0.75,     // 75% discount (Grok)
+  xai: 0.75,        // alias
+  deepseek: 0.90,   // 90% discount
+};
+
+/**
+ * Calculate the cache savings percentage based on provider discount rates.
+ *
+ * @param provider - The provider name (e.g., 'anthropic', 'openai', 'google')
+ * @param inputTokens - Total input tokens in the request
+ * @param cacheReadTokens - Tokens read from cache
+ * @returns Savings percentage (0-100) or undefined if not calculable
+ *
+ * @example
+ * // 1000 input tokens, 800 from cache, using Anthropic (90% discount)
+ * calculateCacheSavings('anthropic', 1000, 800) // => 72 (72% savings)
+ */
+export function calculateCacheSavings(
+  provider: string,
+  inputTokens: number | undefined,
+  cacheReadTokens: number | undefined
+): number | undefined {
+  if (!inputTokens || !cacheReadTokens || inputTokens === 0) {
+    return undefined;
+  }
+
+  // Normalize provider name (handle "anthropic/claude-..." format)
+  const normalizedProvider = provider.includes('/')
+    ? provider.split('/')[0]
+    : provider;
+
+  const discountRate = CACHE_DISCOUNT_RATES[normalizedProvider.toLowerCase()] ?? 0.50;
+
+  // Savings = (cached tokens / total tokens) * discount rate * 100
+  const savingsPercent = Math.round((cacheReadTokens / inputTokens) * discountRate * 100);
+
+  return Math.min(savingsPercent, 100); // Cap at 100%
 }

@@ -1,6 +1,6 @@
 {
   "name": "@doclo/providers-anthropic",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Anthropic Claude provider integration for LLM and VLM operations",
   "license": "MIT",
   "repository": {

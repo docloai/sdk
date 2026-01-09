@@ -9,5 +9,10 @@ export type {
   MultimodalInput,
   UnifiedSchema,
   ReasoningConfig,
-  LLMDerivedOptions
+  LLMDerivedOptions,
+  CachingConfig,
+  ResponseMetrics
 } from '@doclo/providers-llm';
+
+// Re-export caching utilities
+export { calculateCacheSavings } from '@doclo/providers-llm';

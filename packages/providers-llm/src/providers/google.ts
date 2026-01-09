@@ -10,6 +10,7 @@ import type {
   ReasoningConfig,
   LLMDerivedOptions
 } from "../types";
+import { calculateCacheSavings } from "../types";
 import { SchemaTranslator } from "../schema-translator";
 import { combineSchemaAndUserPrompt, combineSchemaUserAndDerivedPrompts } from "../schema-prompt-formatter";
 import { extractMetadataFromResponse, shouldExtractMetadata } from "../metadata-extractor";
@@ -305,6 +306,9 @@ export class GoogleProvider implements LLMProvider {
       const reasoning = message?.reasoning;
       const reasoning_details = message?.reasoning_details;
 
+      // Extract cache metrics (Gemini implicit caching via OpenRouter - free, always enabled)
+      const cacheReadInputTokens = data.usage?.cached_tokens;
+
       // Clean up markdown code blocks if present
       content = content.replace(/^```json\s*\n?/,'').replace(/\n?```\s*$/,'').trim();
 
@@ -317,6 +321,7 @@ export class GoogleProvider implements LLMProvider {
 
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'google');
+      const cacheSavingsPercent = calculateCacheSavings(baseProvider, inputTokens, cacheReadInputTokens);
 
       return {
         json: parsed as T,
@@ -328,7 +333,9 @@ export class GoogleProvider implements LLMProvider {
           latencyMs,
           attemptNumber: 1,
           provider: baseProvider,  // Base provider (e.g., "google" from "google/gemini-...")
-          model: this.config.model
+          model: this.config.model,
+          cacheReadInputTokens,
+          cacheSavingsPercent
         },
         reasoning,
         reasoning_details,
@@ -341,6 +348,9 @@ export class GoogleProvider implements LLMProvider {
       inputTokens = data.usageMetadata?.promptTokenCount;
       outputTokens = data.usageMetadata?.candidatesTokenCount;
       costUSD = this.calculateCost(data.usageMetadata);
+
+      // Extract cache metrics (native Gemini API - implicit caching, free)
+      const cacheReadInputTokens = data.usageMetadata?.cachedContentTokenCount;
 
       // Extract thinking content if present (native API)
       const thinkingPart = candidate?.content?.parts?.find((part: GeminiPart) => part.thought === true);
@@ -355,6 +365,7 @@ export class GoogleProvider implements LLMProvider {
 
       // Extract base provider from model for metrics
       const baseProvider = extractProviderFromModel(this.config.model, 'google');
+      const cacheSavingsPercent = calculateCacheSavings(baseProvider, inputTokens, cacheReadInputTokens);
 
       return {
         json: parsed as T,
@@ -366,7 +377,9 @@ export class GoogleProvider implements LLMProvider {
           latencyMs,
           attemptNumber: 1,
           provider: baseProvider,  // Base provider (e.g., "google" from "google/gemini-...")
-          model: this.config.model
+          model: this.config.model,
+          cacheReadInputTokens,
+          cacheSavingsPercent
         },
         reasoning,
         reasoning_details: reasoning ? [{

@@ -8,6 +8,7 @@ import type {
   ResourceLimits,
   LLMDerivedOptions
 } from "../types";
+import { calculateCacheSavings } from "../types";
 import { SchemaTranslator } from "../schema-translator";
 import { combineSchemaAndUserPrompt, combineSchemaUserAndDerivedPrompts } from "../schema-prompt-formatter";
 import { extractMetadataFromResponse, shouldExtractMetadata } from "../metadata-extractor";
@@ -257,17 +258,24 @@ export class OpenAIProvider implements LLMProvider {
     // Extract base provider from model for metrics
     const baseProvider = extractProviderFromModel(this.config.model, 'openai');
 
+    // Extract cache metrics (OpenAI auto-caching - free, always enabled)
+    const cacheReadInputTokens = data.usage?.prompt_tokens_details?.cached_tokens;
+    const inputTokens = data.usage?.prompt_tokens;
+    const cacheSavingsPercent = calculateCacheSavings(baseProvider, inputTokens, cacheReadInputTokens);
+
     return {
       json: parsed as T,
       rawText: content,
       metrics: {
         costUSD,
-        inputTokens: data.usage?.prompt_tokens,
+        inputTokens,
         outputTokens: data.usage?.completion_tokens,
         latencyMs,
         attemptNumber: 1,
         provider: baseProvider,  // Base provider (e.g., "openai" from "openai/gpt-4...")
-        model: this.config.model
+        model: this.config.model,
+        cacheReadInputTokens,
+        cacheSavingsPercent
       },
       reasoning,
       reasoning_details,
