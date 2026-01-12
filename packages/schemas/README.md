@@ -1,43 +1,41 @@
 # @doclo/schemas
 
-JSON Schema definitions for document extraction types in the Doclo SDK.
+JSON Schema definitions and registry for document extraction.
 
 ## Installation
 
 ```bash
-npm install @doclo/schemas
-# or
 pnpm add @doclo/schemas
 ```
-
-## Features
-
-- Pre-built JSON Schemas for common document types
-- Schema loading and validation utilities
-- TypeScript type generation from schemas
-
-## Included Schemas
-
-- **BDN (Bunker Delivery Note)** - Maritime fuel delivery documents
-- **Companies House** - UK company registration documents
-- Additional schemas for common document types
 
 ## Usage
 
 ```typescript
-import { loadSchema, getSchemaPath } from '@doclo/schemas';
+import { SCHEMA_REGISTRY, registerSchema, getSchema, bdnSchema } from '@doclo/schemas';
 
-// Load a pre-built schema
-const bdnSchema = await loadSchema('bdn');
+// Use a built-in schema directly
+const result = await extract({ provider, schema: bdnSchema });
 
-// Get path to schema file
-const schemaPath = getSchemaPath('bdn');
+// Get schema from registry
+const schema = SCHEMA_REGISTRY.get('bdn');
+
+// Register a custom schema
+registerSchema({
+  id: 'my-invoice',
+  version: '1.0.0',
+  schema: {
+    type: 'object',
+    properties: {
+      invoiceNumber: { type: 'string' },
+      total: { type: 'number' }
+    }
+  }
+});
 ```
 
-## Exports
+## Built-in Schemas
 
-- `.` - Main entry point with schema utilities
-- `./schemas/*` - Direct access to JSON schema files
+- `bdn` - Bunker Delivery Note (maritime fuel delivery)
 
 ## License
 

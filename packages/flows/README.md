@@ -1,40 +1,64 @@
 # @doclo/flows
 
-Flow orchestration and execution engine for document processing pipelines in the Doclo SDK.
+Flow builder and execution engine for document processing pipelines.
 
 ## Installation
 
 ```bash
-npm install @doclo/flows
-# or
 pnpm add @doclo/flows
 ```
-
-## Features
-
-- **FlowBuilder** - Declarative API for building document processing flows
-- **FlowExecutor** - Execute flows with automatic dependency resolution
-- **Composite Nodes** - Combine multiple nodes (sequence, parallel, forEach, conditional)
-- **Metrics Aggregation** - Automatic cost and token tracking across flow execution
 
 ## Usage
 
 ```typescript
-import { FlowBuilder, FlowExecutor } from '@doclo/flows';
+import { createFlow, parse, extract } from '@doclo/flows';
+import { createVLMProvider } from '@doclo/providers-llm';
 
-// Build a flow
-const flow = new FlowBuilder()
-  .addStep('categorize', categorizeNode)
-  .addStep('extract', extractNode, { dependsOn: ['categorize'] })
+const provider = createVLMProvider({
+  provider: 'google',
+  model: 'gemini-2.5-flash',
+  apiKey: process.env.GOOGLE_API_KEY!
+});
+
+const schema = {
+  type: 'object',
+  properties: {
+    invoiceNumber: { type: 'string' },
+    total: { type: 'number' }
+  }
+};
+
+const flow = createFlow()
+  .step('parse', parse({ provider }))
+  .step('extract', extract({ provider, schema }))
   .build();
 
-// Execute the flow
-const executor = new FlowExecutor(flow);
-const result = await executor.execute({
-  text: "Document content...",
-  images: [{ base64: "...", mimeType: "image/jpeg" }]
-});
+const result = await flow.run({ base64: documentBase64 });
+console.log(result.output);
 ```
+
+## Flow Methods
+
+```typescript
+createFlow()
+  .step(id, node)           // Add a sequential step
+  .conditional(id, fn)      // Add conditional branching
+  .forEach(id, childFlowFn) // Process arrays in parallel
+  .output({ name, source }) // Mark explicit output
+  .build()                  // Build executable flow
+```
+
+## Available Nodes
+
+Re-exported from `@doclo/nodes`:
+
+- `parse` - Extract text from documents
+- `split` - Split multi-doc PDFs into segments
+- `categorize` - Classify documents into categories
+- `extract` - Extract structured data using schema
+- `chunk` - Split text into chunks
+- `combine` - Merge results
+- `trigger` - Execute another flow
 
 ## License
 

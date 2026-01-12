@@ -1,35 +1,43 @@
 # @doclo/prompts
 
-Prompt templates and utilities for document extraction in the Doclo SDK.
+Prompt templates and registry for document extraction.
 
 ## Installation
 
 ```bash
-npm install @doclo/prompts
-# or
 pnpm add @doclo/prompts
 ```
-
-## Features
-
-- Pre-built prompt templates for common extraction tasks
-- Prompt composition utilities
-- Schema-to-prompt conversion helpers
 
 ## Usage
 
 ```typescript
-import { getPromptTemplate, composePrompt } from '@doclo/prompts';
+import { PROMPT_REGISTRY, renderPrompt, registerPrompt } from '@doclo/prompts';
 
-// Get a pre-built template
-const template = getPromptTemplate('extract');
+// Get a registered prompt
+const extractPrompt = PROMPT_REGISTRY.get('extract');
 
-// Compose a prompt with schema context
-const prompt = composePrompt(template, {
+// Render a prompt with variables
+const rendered = renderPrompt('extract', {
   schema: mySchema,
-  context: "Additional instructions..."
+  customInstructions: 'Be precise with dates'
+});
+
+// Register a custom prompt
+registerPrompt({
+  id: 'my-prompt',
+  version: '1.0.0',
+  messages: [
+    { role: 'system', content: 'You are a document processor.' },
+    { role: 'user', content: 'Extract: {{schema}}' }
+  ]
 });
 ```
+
+## Built-in Prompts
+
+- `default-extraction` - Structured data extraction
+- `default-categorize` - Document classification
+- `default-parse` - Text extraction
 
 ## License
 

@@ -1,33 +1,34 @@
 # @doclo/core
 
-Core types, utilities, and security features for the Doclo SDK.
+Core types, utilities, and runtime features for the Doclo SDK.
 
 ## Installation
 
 ```bash
-npm install @doclo/core
-# or
 pnpm add @doclo/core
 ```
 
 ## Features
 
-- Core type definitions for document processing
-- Security utilities (SSRF protection, input validation)
+- Core type definitions (DocumentIR, FlowInput, providers)
+- Validation utilities (JSON schema validation, node compatibility)
+- Security utilities (SSRF protection, safe JSON parsing)
 - Runtime utilities (crypto, base64, environment detection)
-- Observability helpers for tracing and metrics
-- PDF utilities for document manipulation
+- PDF utilities (page counting, splitting)
+- Observability helpers (tracing, metrics)
 
 ## Exports
 
-- `.` - Main entry point with core types and utilities
-- `./validation` - Input validation utilities
-- `./security` - Security helpers (fetchWithTimeout, validateUrl, safeJsonParse)
-- `./observability` - Tracing and metrics helpers
-- `./runtime/crypto` - Cryptographic utilities
-- `./runtime/base64` - Base64 encoding/decoding
-- `./runtime/env` - Environment detection
-- `./pdf-utils` - PDF manipulation utilities
+| Export Path | Description |
+|-------------|-------------|
+| `.` | Core types, validation, file utilities |
+| `./validation` | Input validation utilities |
+| `./security` | SSRF protection, fetchWithTimeout, safeJsonParse |
+| `./observability` | Tracing and metrics hooks |
+| `./runtime/crypto` | Cryptographic utilities |
+| `./runtime/base64` | Base64 encoding/decoding |
+| `./runtime/env` | Environment detection |
+| `./pdf-utils` | PDF manipulation utilities |
 
 ## License
 

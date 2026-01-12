@@ -1,0 +1,47 @@
+{
+  "name": "@doclo/benchmark",
+  "version": "0.1.1",
+  "private": true,
+  "description": "Benchmark utility for testing Doclo extraction accuracy against ground truth",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/docloai/sdk.git",
+    "directory": "packages/benchmark"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "cli": "tsx src/cli.ts",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@doclo/core": "workspace:*",
+    "@doclo/flows": "workspace:*",
+    "@doclo/nodes": "workspace:*",
+    "@doclo/providers-llm": "workspace:*",
+    "@doclo/providers-datalab": "workspace:*",
+    "@doclo/schemas": "workspace:*",
+    "chalk": "^5.3.0",
+    "cli-table3": "^0.6.3",
+    "commander": "^12.0.0",
+    "fast-levenshtein": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/fast-levenshtein": "^0.0.4",
+    "@types/node": "^20",
+    "tsup": "^8.0.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.6.0"
+  }
+}

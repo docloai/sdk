@@ -224,8 +224,9 @@ export type ExtractConfig = {
   };
   reasoning?: {
     enabled?: boolean;
-    effort?: 'low' | 'medium' | 'high';
+    effort?: 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
     max_tokens?: number;
+    exclude?: boolean;
   };
   maxTokens?: number;
   promptRef?: string;                     // Reference to prompt asset (e.g., "default-extraction@1.0.0")

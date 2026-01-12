@@ -1,0 +1,44 @@
+{
+  "name": "@doclo/generate",
+  "version": "0.2.3",
+  "description": "Toolkit for generating synthetic document data and rendering document images",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./configs": {
+      "import": "./dist/configs/index.js",
+      "types": "./dist/configs/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@doclo/core": "workspace:^",
+    "@doclo/schemas": "workspace:^",
+    "@doclo/providers-llm": "workspace:^"
+  },
+  "peerDependencies": {
+    "puppeteer": ">=21.0.0"
+  },
+  "peerDependenciesMeta": {
+    "puppeteer": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "puppeteer": "^23.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -113,7 +113,7 @@ export function createVLMProvider(config: {
   internalProvider = createProviderFromRegistry(providerConfig);
 
   // Adapt to core VLMProvider interface
-  return {
+  const provider: CoreVLMProvider = {
     name: internalProvider.name,
     capabilities: {
       supportsImages: true,
@@ -153,6 +153,24 @@ export function createVLMProvider(config: {
       };
     }
   };
+
+  // Add completeText if the internal provider supports it
+  if ('completeText' in internalProvider && typeof (internalProvider as any).completeText === 'function') {
+    provider.completeText = async (input: {
+      input: import("@doclo/core").MultimodalInput;
+      max_tokens?: number;
+      reasoning?: import("./types").ReasoningConfig;
+    }) => {
+      const response = await (internalProvider as any).completeText({
+        input: input.input as MultimodalInput,
+        max_tokens: input.max_tokens,
+        reasoning: input.reasoning
+      });
+      return response;
+    };
+  }
+
+  return provider;
 }
 
 /**

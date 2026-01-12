@@ -629,11 +629,12 @@ export function validateFlow(
 
           // Check reasoning config if present
           if (cfg.reasoning) {
-            if (cfg.reasoning.effort && !['low', 'medium', 'high'].includes(cfg.reasoning.effort)) {
+            const validEfforts = ['xhigh', 'high', 'medium', 'low', 'minimal', 'none'];
+            if (cfg.reasoning.effort && !validEfforts.includes(cfg.reasoning.effort)) {
               errors.push({
                 type: 'invalid_config',
                 stepId,
-                message: `Invalid reasoning effort: ${cfg.reasoning.effort}. Must be: low, medium, or high`
+                message: `Invalid reasoning effort: ${cfg.reasoning.effort}. Must be one of: ${validEfforts.join(', ')}`
               });
             }
           }

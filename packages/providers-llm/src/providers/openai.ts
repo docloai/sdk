@@ -284,13 +284,21 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   private buildReasoningConfig(reasoning: import("../types").ReasoningConfig): any {
+    // Handle explicit disable - return undefined so no reasoning param is sent
+    // OpenRouter treats absence of reasoning param as "no reasoning"
+    if (reasoning.enabled === false || reasoning.effort === 'none') {
+      return undefined;
+    }
+
     const config: any = {};
 
     // OpenAI uses effort directly
     if (reasoning.effort) {
       config.effort = reasoning.effort;
-    } else if (reasoning.enabled) {
-      config.effort = 'medium';  // Default to medium
+    } else if (reasoning.max_tokens || reasoning.enabled) {
+      // If user specified max_tokens without effort, default to medium
+      // (OpenAI doesn't support max_tokens directly, only effort)
+      config.effort = 'medium';
     }
 
     // Add exclude flag if specified

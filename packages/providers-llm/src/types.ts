@@ -251,6 +251,15 @@ export interface LLMExtractedMetadata {
   }>;
 }
 
+/** Text completion response (for non-JSON outputs like JSX/code) */
+export interface TextResponse {
+  text: string;
+  rawText?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUSD?: number;
+}
+
 /** Provider interface */
 export interface LLMProvider {
   readonly name: string;
@@ -265,13 +274,42 @@ export interface LLMProvider {
     embedSchemaInPrompt?: boolean;  // Embed schema field names in prompt (default: true)
     derivedOptions?: LLMDerivedOptions;  // LLM-derived feature options
   }): Promise<LLMResponse<T>>;
+
+  /**
+   * Complete a text prompt without JSON mode.
+   * Use this when you need raw text output (JSX, code, markdown, etc.)
+   * instead of structured JSON.
+   */
+  completeText?(params: {
+    input: MultimodalInput;
+    max_tokens?: number;
+    reasoning?: ReasoningConfig;
+  }): Promise<TextResponse>;
 }
+
+/** Effort level type for reasoning configuration */
+export type ReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+
+/** Effort to ratio mapping (aligned with OpenRouter spec) */
+export const REASONING_EFFORT_RATIOS: Record<ReasoningEffort, number> = {
+  xhigh: 0.95,
+  high: 0.8,
+  medium: 0.5,
+  low: 0.2,
+  minimal: 0.1,
+  none: 0
+};
 
 /** Reasoning configuration (normalized across providers) */
 export interface ReasoningConfig {
-  effort?: 'low' | 'medium' | 'high';  // Normalized effort level
-  exclude?: boolean;  // Exclude reasoning tokens from response
-  enabled?: boolean;  // Enable with default (medium) effort
+  /** Effort level - normalized across providers */
+  effort?: ReasoningEffort;
+  /** Direct token budget - used by Anthropic/Google/Qwen models */
+  max_tokens?: number;
+  /** Exclude reasoning tokens from response */
+  exclude?: boolean;
+  /** Enable with default (medium) effort. Set to false to explicitly disable. */
+  enabled?: boolean;
 }
 
 /** Reasoning detail types (from OpenRouter API) */

@@ -454,18 +454,30 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   private buildNativeThinkingConfig(reasoning: import("../types").ReasoningConfig, max_tokens?: number): any {
-    // Native Anthropic uses "thinking" object with "type" and "budget_tokens"
-    if (!reasoning.effort && !reasoning.enabled) {
+    // Handle explicit disable - simply return undefined (omit thinking param)
+    if (reasoning.enabled === false || reasoning.effort === 'none') {
       return undefined;
     }
 
-    const effort = reasoning.effort || 'medium';
-    const requestMaxTokens = max_tokens || 4096;
+    // If no reasoning requested, return undefined
+    if (!reasoning.effort && !reasoning.enabled && !reasoning.max_tokens) {
+      return undefined;
+    }
 
-    // Convert effort to budget_tokens (minimum 1024 for Anthropic)
-    const effortRatios = { low: 0.2, medium: 0.5, high: 0.8 };
-    const ratio = effortRatios[effort];
-    const budget_tokens = Math.max(1024, Math.min(32000, Math.floor(requestMaxTokens * ratio)));
+    let budget_tokens: number;
+
+    if (reasoning.max_tokens) {
+      // Use user-specified budget directly, respecting limits
+      budget_tokens = Math.max(1024, Math.min(128000, reasoning.max_tokens));
+    } else {
+      const effort = reasoning.effort || 'medium';
+      const requestMaxTokens = max_tokens || 4096;
+
+      // Convert effort to budget_tokens (aligned with OpenRouter spec)
+      const effortRatios: Record<string, number> = { xhigh: 0.95, high: 0.8, medium: 0.5, low: 0.2, minimal: 0.1, none: 0 };
+      const ratio = effortRatios[effort] ?? 0.5;
+      budget_tokens = Math.max(1024, Math.min(128000, Math.floor(requestMaxTokens * ratio)));
+    }
 
     return {
       type: "enabled",
@@ -578,19 +590,29 @@ export class AnthropicProvider implements LLMProvider {
   }
 
   private buildReasoningConfig(reasoning: import("../types").ReasoningConfig, max_tokens?: number): any {
+    // Handle explicit disable - return undefined so no reasoning param is sent
+    // OpenRouter treats absence of reasoning param as "no reasoning"
+    if (reasoning.enabled === false || reasoning.effort === 'none') {
+      return undefined;
+    }
+
     const config: any = {};
 
-    // Anthropic uses max_tokens - convert effort to max_tokens
-    if (reasoning.effort || reasoning.enabled) {
+    // Anthropic via OpenRouter uses max_tokens
+    // Priority: explicit max_tokens > effort conversion
+    if (reasoning.max_tokens) {
+      // Use user-specified budget directly, respecting limits
+      config.max_tokens = Math.max(1024, Math.min(128000, reasoning.max_tokens));
+    } else if (reasoning.effort || reasoning.enabled) {
       const effort = reasoning.effort || 'medium';
       const requestMaxTokens = max_tokens || 4096;  // Default if not specified
 
-      // Convert effort to percentage of max_tokens
-      const effortRatios = { low: 0.2, medium: 0.5, high: 0.8 };
-      const ratio = effortRatios[effort];
+      // Convert effort to percentage of max_tokens (aligned with OpenRouter spec)
+      const effortRatios: Record<string, number> = { xhigh: 0.95, high: 0.8, medium: 0.5, low: 0.2, minimal: 0.1, none: 0 };
+      const ratio = effortRatios[effort] ?? 0.5;
 
-      // Calculate reasoning budget with Anthropic limits (1024 min, 32000 max)
-      const reasoningBudget = Math.max(1024, Math.min(32000, Math.floor(requestMaxTokens * ratio)));
+      // Calculate reasoning budget with Anthropic limits (1024 min, 128000 max)
+      const reasoningBudget = Math.max(1024, Math.min(128000, Math.floor(requestMaxTokens * ratio)));
       config.max_tokens = reasoningBudget;
     }
 

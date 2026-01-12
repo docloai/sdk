@@ -71,15 +71,22 @@ export type MultimodalInput = {
   text?: string;
   images?: Array<{ url?: string; base64?: string; mimeType: string }>;
   pdfs?: Array<{ url?: string; base64?: string; fileId?: string }>;
+  /** Optional system prompt (text-only, prepended to conversation) */
+  systemPrompt?: string;
 };
+
+/** Effort level type for reasoning configuration */
+export type ReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
 
 /** Reasoning configuration (normalized across providers) */
 export type ReasoningConfig = {
-  /** Reasoning effort level: low (20% budget), medium (50%), high (80%) */
-  effort?: 'low' | 'medium' | 'high';
+  /** Effort level - normalized across providers (xhigh: 95%, high: 80%, medium: 50%, low: 20%, minimal: 10%, none: 0%) */
+  effort?: ReasoningEffort;
+  /** Direct token budget - used by Anthropic/Google/Qwen models */
+  max_tokens?: number;
   /** Exclude reasoning tokens from response (only use for accuracy, not visible) */
   exclude?: boolean;
-  /** Enable reasoning with default (medium) effort */
+  /** Enable reasoning with default (medium) effort. Set to false to explicitly disable. */
   enabled?: boolean;
 };
 
@@ -93,6 +100,15 @@ export type LLMProvider = {
     Promise<{ json: unknown; rawText?: string; costUSD?: number; inputTokens?: number; outputTokens?: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number }>;
 };
 
+/** Text completion response (for non-JSON outputs like JSX/code) */
+export type TextResponse = {
+  text: string;
+  rawText?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  costUSD?: number;
+};
+
 /** Vision-capable LLM provider */
 export type VLMProvider = {
   /** Full 3-layer identity (provider/model/method) */
@@ -101,6 +117,12 @@ export type VLMProvider = {
   name: string;
   completeJson: (input: { prompt: string | MultimodalInput; schema: object; max_tokens?: number; reasoning?: ReasoningConfig }) =>
     Promise<{ json: unknown; rawText?: string; costUSD?: number; inputTokens?: number; outputTokens?: number; cacheCreationInputTokens?: number; cacheReadInputTokens?: number }>;
+  /**
+   * Complete a text prompt without JSON mode (optional).
+   * Use this when you need raw text output (JSX, code, markdown, etc.)
+   */
+  completeText?: (input: { input: MultimodalInput; max_tokens?: number; reasoning?: ReasoningConfig }) =>
+    Promise<TextResponse>;
   capabilities: {
     supportsImages: true;
     supportsPDFs: boolean;
@@ -559,7 +581,8 @@ export type ParseNodeConfig = {
    * ```
    */
   reasoning?: {
-    effort?: 'low' | 'medium' | 'high';
+    effort?: 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+    max_tokens?: number;
     exclude?: boolean;
     enabled?: boolean;
   };
@@ -615,7 +638,8 @@ export type SplitNodeConfig = {
    * ```
    */
   reasoning?: {
-    effort?: 'low' | 'medium' | 'high';
+    effort?: 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+    max_tokens?: number;
     exclude?: boolean;
     enabled?: boolean;
   };
@@ -675,7 +699,8 @@ export type CategorizeNodeConfig = {
    * ```
    */
   reasoning?: {
-    effort?: 'low' | 'medium' | 'high';
+    effort?: 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+    max_tokens?: number;
     exclude?: boolean;
     enabled?: boolean;
   };
@@ -706,7 +731,8 @@ export type ExtractNodeConfig<T = any> = {
   schema: object | EnhancedExtractionSchema<T> | { ref: string };  // Accept plain, enhanced, or reference
   consensus?: ConsensusConfig;
   reasoning?: {
-    effort?: 'low' | 'medium' | 'high';
+    effort?: 'xhigh' | 'high' | 'medium' | 'low' | 'minimal' | 'none';
+    max_tokens?: number;
     exclude?: boolean;
     enabled?: boolean;
   };

@@ -280,13 +280,21 @@ export class XAIProvider implements LLMProvider {
   }
 
   private buildReasoningConfig(reasoning: import("../types").ReasoningConfig): any {
+    // XAI/Grok uses reasoning by default, so we MUST explicitly send enabled: false to disable
+    // Unlike other providers, omitting the reasoning param does NOT disable reasoning for XAI
+    if (reasoning.enabled === false || reasoning.effort === 'none') {
+      return { enabled: false };
+    }
+
     const config: any = {};
 
-    // xAI uses effort directly (like OpenAI)
+    // xAI uses effort directly
     if (reasoning.effort) {
       config.effort = reasoning.effort;
-    } else if (reasoning.enabled) {
-      config.effort = 'medium';  // Default to medium
+    } else if (reasoning.max_tokens || reasoning.enabled) {
+      // If user specified max_tokens without effort, default to medium
+      // (xAI doesn't support max_tokens directly, only effort)
+      config.effort = 'medium';
     }
 
     // Add exclude flag if specified

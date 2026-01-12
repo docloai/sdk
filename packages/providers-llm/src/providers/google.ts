@@ -8,7 +8,8 @@ import type {
   ResourceLimits,
   JsonMode,
   ReasoningConfig,
-  LLMDerivedOptions
+  LLMDerivedOptions,
+  TextResponse
 } from "../types";
 import { calculateCacheSavings } from "../types";
 import { SchemaTranslator } from "../schema-translator";
@@ -394,24 +395,209 @@ export class GoogleProvider implements LLMProvider {
     }
   }
 
+  /**
+   * Complete a text prompt without JSON mode.
+   * Returns raw text output (JSX, code, markdown, etc.)
+   */
+  async completeText(params: {
+    input: MultimodalInput;
+    max_tokens?: number;
+    reasoning?: ReasoningConfig;
+  }): Promise<TextResponse> {
+    const normalizedInput: MultimodalInput = typeof params.input === 'string'
+      ? { text: params.input as string }
+      : params.input;
+
+    // Build contents with multimodal parts
+    const contents = await this.buildContents(normalizedInput);
+
+    let response: Response;
+
+    if (this.config.via === 'openrouter') {
+      // Use OpenRouter endpoint WITHOUT JSON mode
+      const openRouterRequest = this.translateToOpenRouterFormatText(contents, params.max_tokens, params.reasoning, normalizedInput.systemPrompt);
+      response = await fetchWithTimeout("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${this.config.apiKey}`,
+          "HTTP-Referer": "https://github.com/docloai/sdk",
+          "X-Title": "Doclo SDK"
+        },
+        body: JSON.stringify(openRouterRequest)
+      }, this.limits.REQUEST_TIMEOUT);
+    } else {
+      // Use native Google API WITHOUT JSON mode
+      const requestBody: GeminiRequestBody & { systemInstruction?: { parts: { text: string }[] } } = {
+        contents,
+        generationConfig: {
+          // No responseMimeType - allow natural text output
+        },
+        ...(normalizedInput.systemPrompt && {
+          systemInstruction: { parts: [{ text: normalizedInput.systemPrompt }] }
+        })
+      };
+
+      // Add thinking config if enabled
+      if (params.reasoning) {
+        const thinkingConfig = this.buildNativeThinkingConfig(params.reasoning, params.max_tokens);
+        if (thinkingConfig) {
+          requestBody.generationConfig.thinking_config = thinkingConfig;
+        }
+      }
+
+      const endpoint = this.config.baseUrl ||
+        `https://generativelanguage.googleapis.com/v1beta/models/${this.config.model}:generateContent`;
+
+      validateUrl(endpoint);
+
+      response = await fetchWithTimeout(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": this.config.apiKey
+        },
+        body: JSON.stringify(requestBody)
+      }, this.limits.REQUEST_TIMEOUT);
+    }
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Google API error (${response.status}): ${error}`);
+    }
+
+    const data = await response.json();
+
+    // Parse response based on via parameter
+    if (this.config.via === 'openrouter') {
+      const message = data.choices?.[0]?.message;
+      const content = message?.content?.trim() || "";
+      const inputTokens = data.usage?.prompt_tokens;
+      const outputTokens = data.usage?.completion_tokens;
+      const costUSD = data.usage?.total_cost ?? data.usage?.cost;
+
+      return {
+        text: content,
+        rawText: content,
+        inputTokens,
+        outputTokens,
+        costUSD
+      };
+    } else {
+      const candidate = data.candidates?.[0];
+      const content = candidate?.content?.parts?.[0]?.text?.trim() || "";
+      const inputTokens = data.usageMetadata?.promptTokenCount;
+      const outputTokens = data.usageMetadata?.candidatesTokenCount;
+      const costUSD = this.calculateCost(data.usageMetadata);
+
+      return {
+        text: content,
+        rawText: content,
+        inputTokens,
+        outputTokens,
+        costUSD
+      };
+    }
+  }
+
+  /**
+   * Translate to OpenRouter format WITHOUT JSON mode
+   */
+  private translateToOpenRouterFormatText(
+    contents: GeminiContent[],
+    max_tokens?: number,
+    reasoning?: ReasoningConfig,
+    systemPrompt?: string
+  ): Omit<OpenRouterRequest, 'response_format'> {
+    const messages: OpenRouterMessage[] = [];
+
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+
+    for (const content of contents) {
+      if (content.role === 'user') {
+        const messageContent: OpenRouterContentPart[] = [];
+
+        for (const part of content.parts) {
+          if (!part) continue;
+          if (part.text) {
+            messageContent.push({ type: 'text', text: part.text });
+          } else if (part.inlineData) {
+            if (part.inlineData.mimeType === 'application/pdf') {
+              messageContent.push({
+                type: 'file',
+                file: {
+                  filename: 'document.pdf',
+                  file_data: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+                }
+              });
+            } else {
+              messageContent.push({
+                type: 'image_url',
+                image_url: {
+                  url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`
+                }
+              });
+            }
+          }
+        }
+
+        messages.push({
+          role: 'user',
+          content: messageContent.length === 1 && messageContent[0].type === 'text'
+            ? messageContent[0].text
+            : messageContent
+        });
+      }
+    }
+
+    const requestBody: Omit<OpenRouterRequest, 'response_format'> = {
+      model: this.config.model,
+      messages,
+      usage: { include: true }
+      // NO response_format - allow natural text output
+    };
+
+    if (max_tokens) {
+      (requestBody as OpenRouterRequest).max_tokens = max_tokens;
+    }
+
+    if (reasoning) {
+      requestBody.reasoning = this.buildReasoningConfig(reasoning, max_tokens);
+    }
+
+    return requestBody;
+  }
+
   private buildNativeThinkingConfig(reasoning: ReasoningConfig, max_tokens?: number): GeminiGenerationConfig['thinking_config'] | undefined {
-    // Native Google uses "thinking_budget" parameter
-    if (!reasoning.effort && !reasoning.enabled) {
+    // Handle explicit disable - set thinking_budget to 0
+    if (reasoning.enabled === false || reasoning.effort === 'none') {
+      return { thinking_budget: 0 };
+    }
+
+    // If no reasoning requested, return undefined
+    if (!reasoning.effort && !reasoning.enabled && !reasoning.max_tokens) {
       return undefined;
     }
 
-    const effort = reasoning.effort || 'medium';
-    const requestMaxTokens = max_tokens || 8192;
+    let thinking_budget: number;
 
-    // Convert effort to thinking_budget
-    // Gemini 2.5 Flash supports 0-24576 tokens, default auto max is 8192
-    const effortRatios = { low: 0.2, medium: 0.5, high: 0.8 };
-    const ratio = effortRatios[effort];
-    const thinking_budget = Math.min(24576, Math.floor(requestMaxTokens * ratio));
+    if (reasoning.max_tokens) {
+      // Use user-specified budget directly, respecting Gemini limit
+      thinking_budget = Math.min(24576, reasoning.max_tokens);
+    } else {
+      const effort = reasoning.effort || 'medium';
+      const requestMaxTokens = max_tokens || 8192;
 
-    return {
-      thinking_budget
-    };
+      // Convert effort to thinking_budget (aligned with OpenRouter spec)
+      // Gemini 2.5 Flash supports 0-24576 tokens, default auto max is 8192
+      const effortRatios: Record<string, number> = { xhigh: 0.95, high: 0.8, medium: 0.5, low: 0.2, minimal: 0.1, none: 0 };
+      const ratio = effortRatios[effort] ?? 0.5;
+      thinking_budget = Math.min(24576, Math.floor(requestMaxTokens * ratio));
+    }
+
+    return { thinking_budget };
   }
 
   private translateToOpenRouterFormat(
@@ -492,16 +678,25 @@ export class GoogleProvider implements LLMProvider {
   }
 
   private buildReasoningConfig(reasoning: ReasoningConfig, max_tokens?: number): OpenRouterReasoningConfig | undefined {
+    // Handle explicit disable - return undefined so no reasoning param is sent
+    // OpenRouter treats absence of reasoning param as "no reasoning"
+    if (reasoning.enabled === false || reasoning.effort === 'none') {
+      return undefined;
+    }
+
     const config: OpenRouterReasoningConfig = {};
 
-    // Google uses max_tokens - convert effort to max_tokens
-    if (reasoning.effort || reasoning.enabled) {
+    // Google via OpenRouter uses max_tokens
+    // Priority: explicit max_tokens > effort conversion
+    if (reasoning.max_tokens) {
+      config.max_tokens = reasoning.max_tokens;
+    } else if (reasoning.effort || reasoning.enabled) {
       const effort = reasoning.effort || 'medium';
       const requestMaxTokens = max_tokens || 8192;  // Default for Gemini
 
-      // Convert effort to percentage of max_tokens
-      const effortRatios = { low: 0.2, medium: 0.5, high: 0.8 };
-      const ratio = effortRatios[effort];
+      // Convert effort to percentage of max_tokens (aligned with OpenRouter spec)
+      const effortRatios: Record<string, number> = { xhigh: 0.95, high: 0.8, medium: 0.5, low: 0.2, minimal: 0.1, none: 0 };
+      const ratio = effortRatios[effort] ?? 0.5;
 
       // Calculate reasoning budget
       const reasoningBudget = Math.floor(requestMaxTokens * ratio);

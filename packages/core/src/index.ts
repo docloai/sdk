@@ -20,6 +20,7 @@ export type {
   ReasoningConfig,
   LLMProvider,
   VLMProvider,
+  TextResponse,
   LLMJsonProvider,
   ConsensusConfig,
   ConsensusRunResult,

@@ -1,38 +1,42 @@
 # @doclo/nodes
 
-Processing nodes for document extraction and transformation in the Doclo SDK.
+Processing nodes for document extraction and transformation.
 
 ## Installation
 
 ```bash
-npm install @doclo/nodes
-# or
 pnpm add @doclo/nodes
 ```
 
-## Features
+## Available Nodes
 
-- **ExtractNode** - Extract structured data from documents using LLM providers
-- **CategorizeNode** - Classify documents into predefined categories
-- **SplitNode** - Split multi-page documents into logical sections
-- **ConsensusNode** - Run multiple extractions and merge results for higher accuracy
+| Node | Purpose | Input | Output |
+|------|---------|-------|--------|
+| `parse` | Extract text from documents | FlowInput | DocumentIR |
+| `split` | Split multi-doc PDFs | FlowInput | SplitDocument[] |
+| `categorize` | Classify documents | FlowInput/DocumentIR | { input, category } |
+| `extract` | Extract structured data | DocumentIR/FlowInput | Schema-typed object |
+| `chunk` | Split text into chunks | DocumentIR | ChunkOutput[] |
+| `combine` | Merge results | Array | Combined result |
+| `output` | Mark explicit output | Any | Passed through |
+| `trigger` | Execute another flow | Any | Child flow output |
 
 ## Usage
 
 ```typescript
-import { ExtractNode, CategorizeNode } from '@doclo/nodes';
+import { parse, extract, categorize } from '@doclo/nodes';
+import { createVLMProvider } from '@doclo/providers-llm';
 
-// Create an extraction node
-const extractNode = new ExtractNode({
-  provider: myLLMProvider,
-  schema: mySchema
+const provider = createVLMProvider({
+  provider: 'google',
+  model: 'gemini-2.5-flash',
+  apiKey: process.env.GOOGLE_API_KEY!
 });
 
-// Execute extraction
-const result = await extractNode.execute({
-  text: "Document content...",
-  images: [{ base64: "...", mimeType: "image/jpeg" }]
-});
+// Create nodes
+const parseNode = parse({ provider });
+const extractNode = extract({ provider, schema: mySchema });
+const categorizeNode = categorize({ provider, categories: ['invoice', 'receipt'] });
 ```
 
 ## License

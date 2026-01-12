@@ -1,42 +1,66 @@
 # @doclo/providers-llm
 
-LLM provider integrations for the Doclo SDK. Supports OpenAI, Anthropic, Google (Gemini), and xAI (Grok).
+LLM/VLM provider integrations for the Doclo SDK.
 
 ## Installation
 
 ```bash
-npm install @doclo/providers-llm
-# or
 pnpm add @doclo/providers-llm
 ```
 
 ## Supported Providers
 
-- **OpenAI** - GPT-4, GPT-4o, GPT-4.1 models
-- **Anthropic** - Claude 3.5, Claude 4.5, Opus models
-- **Google** - Gemini 2.5 Flash, Gemini Pro models
-- **xAI** - Grok 4 models
+- **OpenAI** - GPT-4, GPT-4o, GPT-4.1
+- **Anthropic** - Claude 3.5, Claude 4.5
+- **Google** - Gemini 2.5 Flash, Gemini Pro
+- **xAI** - Grok 4
 
-All providers can be used directly or via OpenRouter for unified billing and routing.
+All providers can be used directly or via OpenRouter.
 
 ## Usage
 
-```typescript
-import { createProvider } from '@doclo/providers-llm';
+### Via OpenRouter (Recommended)
 
-// Create a provider
-const provider = createProvider({
-  provider: 'anthropic',
-  model: 'anthropic/claude-sonnet-4-5-20250929',
-  apiKey: process.env.OPENROUTER_API_KEY,
+```typescript
+import { createVLMProvider } from '@doclo/providers-llm';
+
+const provider = createVLMProvider({
+  provider: 'google',
+  model: 'google/gemini-2.5-flash-preview',
+  apiKey: process.env.OPENROUTER_API_KEY!,
   via: 'openrouter'
 });
+```
 
-// Use with structured output
-const result = await provider.completeJson({
-  input: { text: "Extract data from this...", images: [...] },
-  schema: myZodSchema,
-  mode: 'strict'
+### Native Provider APIs
+
+```typescript
+// Google
+const gemini = createVLMProvider({
+  provider: 'google',
+  model: 'gemini-2.5-flash',
+  apiKey: process.env.GOOGLE_API_KEY!
+});
+
+// OpenAI
+const gpt = createVLMProvider({
+  provider: 'openai',
+  model: 'gpt-4.1',
+  apiKey: process.env.OPENAI_API_KEY!
+});
+
+// Anthropic
+const claude = createVLMProvider({
+  provider: 'anthropic',
+  model: 'claude-sonnet-4.5',
+  apiKey: process.env.ANTHROPIC_API_KEY!
+});
+
+// xAI
+const grok = createVLMProvider({
+  provider: 'xai',
+  model: 'grok-4-fast',
+  apiKey: process.env.XAI_API_KEY!
 });
 ```
 
@@ -44,9 +68,8 @@ const result = await provider.completeJson({
 
 - Unified interface across all providers
 - Structured output with JSON Schema validation
-- Multimodal support (images, PDFs)
+- Vision/multimodal support (images, PDFs)
 - Extended thinking/reasoning support
-- Automatic MIME type detection
 - Cost and token tracking
 
 ## License
