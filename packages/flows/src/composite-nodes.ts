@@ -71,6 +71,35 @@ function flattenMetrics(
 }
 
 /**
+ * Helper function to flatten child flow artifacts by prefixing keys
+ * Mirrors the flattenMetrics pattern for consistency between metrics and artifacts.
+ *
+ * This enables direct access to nested step outputs:
+ * - Before: artifacts["step:branchArtifacts"]["nested-step"]
+ * - After: artifacts["step.branch.category.nested-step"]
+ *
+ * @param childArtifacts - Artifacts from child flow execution
+ * @param prefix - Prefix to add to all artifact keys (e.g., "stepId.branch.categoryName")
+ * @returns Record with flattened artifact keys
+ */
+function flattenArtifacts(
+  childArtifacts: Record<string, unknown>,
+  prefix: string
+): Record<string, unknown> {
+  const flattened: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(childArtifacts)) {
+    // Skip internal artifacts (they're flow-specific and shouldn't propagate)
+    if (key.startsWith('__')) continue;
+
+    // Prefix the key with the branch path
+    flattened[`${prefix}.${key}`] = value;
+  }
+
+  return flattened;
+}
+
+/**
  * Configuration for conditional composite node
  */
 export interface ConditionalCompositeConfig {
@@ -184,7 +213,21 @@ export function createConditionalCompositeNode(
         // Store branch output in artifacts
         if (ctx?.emit) {
           ctx.emit(`${stepId}:branchOutput`, branchResult.output);
-          ctx.emit(`${stepId}:branchArtifacts`, branchResult.artifacts);
+
+          // Flatten branch artifacts with prefixed keys for direct access
+          // This enables: artifacts["quality-gate.branch.high_quality.extract"]
+          if (branchResult.artifacts) {
+            const flattenedArtifacts = flattenArtifacts(
+              branchResult.artifacts,
+              `${stepId}.branch.${selectedCategory}`
+            );
+            for (const [key, value] of Object.entries(flattenedArtifacts)) {
+              ctx.emit(key, value);
+            }
+
+            // Also emit nested structure for backward compatibility
+            ctx.emit(`${stepId}:branchArtifacts`, branchResult.artifacts);
+          }
         }
 
         // === PHASE 3: COMPLETE ===
@@ -461,6 +504,23 @@ export function createForEachCompositeNode(
           ctx.emit(`${stepId}:results`, results);
           ctx.emit(`${stepId}:successCount`, successCount);
           ctx.emit(`${stepId}:failureCount`, failureCount);
+
+          // Flatten item artifacts with prefixed keys for direct access
+          // This enables: artifacts["split-step.item[0].extract"], artifacts["split-step.item[1].extract"]
+          itemFlowResults.forEach((result, index) => {
+            if (result.artifacts) {
+              const flattenedArtifacts = flattenArtifacts(
+                result.artifacts,
+                `${stepId}.item[${index}]`
+              );
+              for (const [key, value] of Object.entries(flattenedArtifacts)) {
+                ctx.emit(key, value);
+              }
+            }
+          });
+
+          // Also emit array of artifacts for backward compatibility
+          ctx.emit(`${stepId}:itemArtifacts`, itemFlowResults.map(r => r.artifacts));
         }
 
         // Add composite node overhead metric
@@ -806,7 +866,21 @@ export function createRouteCompositeNode(
         // Store branch output in artifacts
         if (ctx?.emit) {
           ctx.emit(`${stepId}:branchOutput`, branchResult.output);
-          ctx.emit(`${stepId}:branchArtifacts`, branchResult.artifacts);
+
+          // Flatten branch artifacts with prefixed keys for direct access
+          // This enables: artifacts["route-step.branch.pdf.extract"]
+          if (branchResult.artifacts) {
+            const flattenedArtifacts = flattenArtifacts(
+              branchResult.artifacts,
+              `${stepId}.branch.${selectedBranch}`
+            );
+            for (const [key, value] of Object.entries(flattenedArtifacts)) {
+              ctx.emit(key, value);
+            }
+
+            // Also emit nested structure for backward compatibility
+            ctx.emit(`${stepId}:branchArtifacts`, branchResult.artifacts);
+          }
         }
 
         // === PHASE 4: COMPLETE ===

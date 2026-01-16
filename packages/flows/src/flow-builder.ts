@@ -995,6 +995,15 @@ export class Flow<TInput = any, TOutput = any> {
 
             // Store the original output in artifacts (preserve wrapped data)
             artifacts[step.id] = result.output;
+
+            // Merge emitted artifacts from pipeline execution (for composite nodes)
+            // This captures flattened artifacts from nested branches
+            for (const [key, value] of Object.entries(result.artifacts)) {
+              if (!(key in artifacts)) {
+                artifacts[key] = value;
+              }
+            }
+
             metrics.push(...result.metrics);
             completedSteps.push(step.id);
 
