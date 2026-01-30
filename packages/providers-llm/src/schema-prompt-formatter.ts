@@ -37,7 +37,8 @@ export function formatSchemaForPrompt(schema: JSONSchema, indent: number = 0): s
   // Handle object type with properties
   if (schema.type === 'object' && schema.properties) {
     const properties = schema.properties;
-    const required = schema.required || [];
+    // required can be boolean in malformed schemas - must check Array.isArray
+    const required = Array.isArray(schema.required) ? schema.required : [];
 
     for (const [fieldName, fieldSchema] of Object.entries(properties)) {
       const isRequired = required.includes(fieldName);

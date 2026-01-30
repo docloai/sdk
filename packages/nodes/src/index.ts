@@ -1991,6 +1991,18 @@ export function categorize(config: CategorizeNodeConfig) {
           prompt += `\n\n${text}`;
         }
 
+        // Set observability context on provider if supported
+        if ((config.provider as any).__setObservabilityContext && ctx.observability) {
+          (config.provider as any).__setObservabilityContext({
+            config: ctx.observability.config,
+            flowId: ctx.observability.flowId,
+            executionId: ctx.observability.executionId,
+            stepId: ctx.observability.stepId,
+            traceContext: ctx.observability.traceContext,
+            metadata: ctx.observability.metadata,
+          });
+        }
+
         // Use multimodal input if prompt has images, otherwise plain text
         if (promptImages.length > 0) {
           // Cast to VLMProvider for multimodal input
@@ -2083,6 +2095,18 @@ export function categorize(config: CategorizeNodeConfig) {
           ? [{ base64: dataUrl, mimeType: detectedType as ExtractedImage['mimeType'] }]
           : [];
         const allImages = [...promptImages, ...documentImages];
+
+        // Set observability context on provider if supported
+        if ((config.provider as any).__setObservabilityContext && ctx.observability) {
+          (config.provider as any).__setObservabilityContext({
+            config: ctx.observability.config,
+            flowId: ctx.observability.flowId,
+            executionId: ctx.observability.executionId,
+            stepId: ctx.observability.stepId,
+            traceContext: ctx.observability.traceContext,
+            metadata: ctx.observability.metadata,
+          });
+        }
 
         console.log('[DEBUG] categorize (FlowInput): calling provider.completeJson with prompt length:', promptText?.length);
         console.log('[DEBUG] categorize (FlowInput): schema:', JSON.stringify(schema));

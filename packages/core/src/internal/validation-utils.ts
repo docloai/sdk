@@ -1986,7 +1986,8 @@ export function validateJson<T>(data: unknown, schema: JSONSchemaNode): T {
 
         if (schema.additionalProperties === false && schema.properties) {
           const allowedProps = Object.keys(schema.properties);
-          const requiredProps = schema.required || [];
+          // required can be boolean in malformed schemas - must check Array.isArray
+          const requiredProps = Array.isArray(schema.required) ? schema.required : [];
           const allAllowedProps = new Set([...allowedProps, ...requiredProps]);
 
           // Check all keys including potentially dangerous ones

@@ -1,6 +1,6 @@
 {
   "name": "@doclo/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Doclo SDK - Document extraction, parsing, and processing with AI",
   "license": "MIT",
   "repository": {

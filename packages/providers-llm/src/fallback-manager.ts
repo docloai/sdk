@@ -72,7 +72,7 @@ export class FallbackManager {
         logger.warn(`Circuit breaker open for ${providerKey}, skipping`);
 
         // onCircuitBreakerTriggered hook
-        if (observability?.config && observability.traceContext && observability.executionId) {
+        if (observability?.config && observability.executionId) {
           const cbState = this.circuitBreakers.get(providerKey);
           const circuitBreakerContext: CircuitBreakerContext = {
             flowId: observability.flowId ?? 'flow',
@@ -84,7 +84,11 @@ export class FallbackManager {
             threshold: this.config.circuitBreakerThreshold ?? 5,
             cooldownMs: 60000, // Default cooldown
             metadata: observability.metadata,
-            traceContext: observability.traceContext,
+            traceContext: observability.traceContext ?? {
+              traceId: observability.executionId,
+              spanId: observability.stepId ?? generateSpanId(),
+              traceFlags: 0,
+            },
           };
           await executeHook(observability.config.onCircuitBreakerTriggered, {
             hookName: 'onCircuitBreakerTriggered',
@@ -113,7 +117,7 @@ export class FallbackManager {
           const requestStartTime = Date.now();
 
           // onProviderRequest hook
-          if (observability?.config && observability.traceContext && observability.executionId) {
+          if (observability?.config && observability.executionId) {
             const providerRequestContext: ProviderRequestContext = {
               flowId: observability.flowId ?? 'flow',
               executionId: observability.executionId,
@@ -126,7 +130,11 @@ export class FallbackManager {
               attemptNumber: attempt,
               maxAttempts: maxRetriesForProvider,
               metadata: observability.metadata,
-              traceContext: observability.traceContext,
+              traceContext: observability.traceContext ?? {
+                traceId: observability.executionId,
+                spanId: observability.stepId ?? generateSpanId(),
+                traceFlags: 0,
+              },
             };
             await executeHook(observability.config.onProviderRequest, {
               hookName: 'onProviderRequest',
@@ -142,7 +150,7 @@ export class FallbackManager {
             this.recordSuccess(providerKey);
 
             // onProviderResponse hook
-            if (observability?.config && observability.traceContext && observability.executionId) {
+            if (observability?.config && observability.executionId) {
               const providerResponseContext: ProviderResponseContext = {
                 flowId: observability.flowId ?? 'flow',
                 executionId: observability.executionId,
@@ -165,7 +173,11 @@ export class FallbackManager {
                 finishReason: response.metrics.finishReason,
                 attemptNumber: attempt,
                 metadata: observability.metadata,
-                traceContext: observability.traceContext,
+                traceContext: observability.traceContext ?? {
+                  traceId: observability.executionId,
+                  spanId: observability.stepId ?? generateSpanId(),
+                  traceFlags: 0,
+                },
               };
               await executeHook(observability.config.onProviderResponse, {
                 hookName: 'onProviderResponse',
@@ -199,7 +211,7 @@ export class FallbackManager {
           });
 
           // onProviderRetry hook
-          if (observability?.config && observability.traceContext && observability.executionId) {
+          if (observability?.config && observability.executionId) {
             const providerRetryContext: ProviderRetryContext = {
               flowId: observability.flowId ?? 'flow',
               executionId: observability.executionId,
@@ -212,7 +224,11 @@ export class FallbackManager {
               error: lastError,
               nextRetryDelay: retryDelay,
               metadata: observability.metadata,
-              traceContext: observability.traceContext,
+              traceContext: observability.traceContext ?? {
+                traceId: observability.executionId,
+                spanId: observability.stepId ?? generateSpanId(),
+                traceFlags: 0,
+              },
             };
             await executeHook(observability.config.onProviderRetry, {
               hookName: 'onProviderRetry',
